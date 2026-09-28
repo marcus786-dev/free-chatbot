@@ -1,0 +1,776 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1f1f23" media="(prefers-color-scheme: dark)">
+<!-- iPhone "Add to Home Screen": opens full screen like an app -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Chatbot">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Free Chatbot</title>
+<style>
+  :root {
+    --bg: #f6f6f4;
+    --surface: #ffffff;
+    --text: #1c1c1a;
+    --muted: #6b6b66;
+    --border: #e3e2dd;
+    --accent: #5b4bd6;
+    --accent-text: #ffffff;
+    --assistant-bg: #ffffff;
+    --error-bg: #fdecec;
+    --error-text: #a32121;
+    --warn-bg: #fff4dc;
+    --warn-text: #7a5200;
+    --info-bg: #ecebfb;
+    --info-text: #3d3196;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151517;
+      --surface: #1f1f23;
+      --text: #ececec;
+      --muted: #9a9aa2;
+      --border: #2e2e34;
+      --accent: #7c6ff0;
+      --accent-text: #ffffff;
+      --assistant-bg: #232328;
+      --error-bg: #3a1d1d;
+      --error-text: #ffa3a3;
+      --warn-bg: #362b12;
+      --warn-text: #f3cf7a;
+      --info-bg: #25224a;
+      --info-text: #c9c3ff;
+      color-scheme: dark;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  /* --app-height follows the visible area, so the iPhone keyboard never covers the composer. */
+  html, body { margin: 0; height: var(--app-height, 100%); overflow: hidden; overscroll-behavior: none; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button, input, select, textarea { font: inherit; color: inherit; }
+  /* 16px or larger stops iPhone Safari from zooming in when a field is tapped. */
+  input, select, textarea { font-size: 16px; }
+  button {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 8px;
+    padding: 7px 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    touch-action: manipulation;
+  }
+  @media (pointer: coarse) {
+    button, select { min-height: 44px; }
+  }
+  button:hover:not(:disabled) { border-color: var(--muted); }
+  button:disabled { opacity: .5; cursor: default; }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: transparent; }
+  button.primary:hover:not(:disabled) { filter: brightness(1.08); }
+  button.link { background: none; border: none; padding: 0; color: var(--accent); }
+  input, select, textarea {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+  input:focus, select:focus, textarea:focus, button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  /* Loading */
+  #loading {
+    height: 100%;
+    display: grid;
+    place-items: center;
+    color: var(--muted);
+    padding: 16px;
+    text-align: center;
+  }
+
+  /* Login */
+  .login {
+    height: 100%;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    padding:
+      max(16px, env(safe-area-inset-top, 0px))
+      max(16px, env(safe-area-inset-right, 0px))
+      max(16px, env(safe-area-inset-bottom, 0px))
+      max(16px, env(safe-area-inset-left, 0px));
+  }
+  .card {
+    margin: auto;
+    width: 100%;
+    max-width: 360px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .card h1 { margin: 0; font-size: 22px; }
+  .card p { margin: 0; }
+  .card label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+  .card input { color: var(--text); }
+  .card .primary { padding: 10px; }
+  .muted { color: var(--muted); }
+  .message { font-size: 14px; border-radius: 8px; padding: 8px 10px; }
+  .message:empty { display: none; }
+  .message.error { background: var(--error-bg); color: var(--error-text); }
+  .message.info { background: var(--info-bg); color: var(--info-text); }
+  .toggle-row { font-size: 14px; text-align: center; }
+
+  /* Chat layout */
+  .chat { height: 100%; display: flex; flex-direction: column; }
+  header {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas: "brand controls account";
+    align-items: center;
+    gap: 8px 16px;
+    padding:
+      calc(10px + env(safe-area-inset-top, 0px))
+      max(16px, env(safe-area-inset-right, 0px))
+      10px
+      max(16px, env(safe-area-inset-left, 0px));
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { grid-area: brand; font-weight: 650; font-size: 16px; }
+  .controls { grid-area: controls; display: flex; gap: 8px; min-width: 0; }
+  .controls select { flex: 1 1 auto; min-width: 0; max-width: 440px; }
+  .account { grid-area: account; display: flex; align-items: center; gap: 10px; min-width: 0; }
+  #user-email {
+    color: var(--muted);
+    font-size: 13px;
+    max-width: 24ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  @media (max-width: 640px) {
+    header {
+      grid-template-columns: 1fr auto;
+      grid-template-areas: "brand account" "controls controls";
+    }
+    #user-email { display: none; }
+  }
+
+  #messages {
+    flex: 1;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding: 20px max(16px, env(safe-area-inset-right, 0px)) 20px max(16px, env(safe-area-inset-left, 0px));
+  }
+  .thread { max-width: 780px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+  .empty { text-align: center; color: var(--muted); margin-top: 18vh; }
+  .empty strong { display: block; color: var(--text); font-size: 18px; margin-bottom: 4px; }
+
+  .msg { display: flex; flex-direction: column; max-width: 85%; }
+  .msg.user { align-self: flex-end; align-items: flex-end; }
+  .msg.assistant { align-self: flex-start; align-items: flex-start; }
+  .bubble {
+    padding: 9px 13px;
+    border-radius: 14px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .msg.user .bubble { background: var(--accent); color: var(--accent-text); border-bottom-right-radius: 4px; }
+  .msg.assistant .bubble { background: var(--assistant-bg); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+  .bubble.thinking { color: var(--muted); font-style: italic; animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .45; } }
+  @media (prefers-reduced-motion: reduce) { .bubble.thinking { animation: none; } }
+  .caption { font-size: 12px; color: var(--muted); margin-top: 3px; padding: 0 4px; }
+
+  .note { align-self: center; font-size: 14px; padding: 8px 12px; border-radius: 8px; max-width: 100%; text-align: center; }
+  .note.error { background: var(--error-bg); color: var(--error-text); }
+  .note.warn { background: var(--warn-bg); color: var(--warn-text); }
+
+  #composer {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    max-width: 812px;
+    width: 100%;
+    margin: 0 auto;
+    padding:
+      12px
+      max(16px, env(safe-area-inset-right, 0px))
+      calc(14px + env(safe-area-inset-bottom, 0px))
+      max(16px, env(safe-area-inset-left, 0px));
+  }
+  /* While the on-screen keyboard is up, the home-indicator gap isn't needed. */
+  :root.kb #composer { padding-bottom: 10px; }
+  #input {
+    flex: 1;
+    resize: none;
+    min-height: 44px;
+    max-height: 200px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    line-height: 1.4;
+  }
+  #send { min-height: 44px; padding: 0 18px; border-radius: 12px; }
+</style>
+</head>
+<body>
+
+<div id="loading">Loading…</div>
+
+<div id="login-view" class="login" hidden>
+  <form id="login-form" class="card" novalidate>
+    <h1>Free Chatbot</h1>
+    <p id="login-subtitle" class="muted">Log in to start chatting.</p>
+    <label>Email
+      <input id="email" type="email" autocomplete="email" required>
+    </label>
+    <label>Password
+      <input id="password" type="password" autocomplete="current-password" minlength="6" required>
+    </label>
+    <button id="login-submit" type="submit" class="primary">Log in</button>
+    <p id="login-message" class="message" role="status"></p>
+    <p class="toggle-row">
+      <span id="toggle-text" class="muted">No account yet?</span>
+      <button id="mode-toggle" type="button" class="link">Create an account</button>
+    </p>
+  </form>
+</div>
+
+<div id="chat-view" class="chat" hidden>
+  <header>
+    <div class="brand">Free Chatbot</div>
+    <div class="controls">
+      <select id="model" aria-label="Model"></select>
+      <button id="retry-models" type="button" hidden>Retry</button>
+      <button id="new-chat" type="button">New chat</button>
+    </div>
+    <div class="account">
+      <span id="user-email"></span>
+      <button id="logout" type="button">Log out</button>
+    </div>
+  </header>
+  <div id="messages" role="log" aria-live="polite">
+    <div id="thread" class="thread"></div>
+  </div>
+  <form id="composer">
+    <textarea id="input" rows="1" placeholder="Message…" aria-label="Message"></textarea>
+    <button id="send" type="submit" class="primary">Send</button>
+  </form>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL = 'https://qkqwvhtwcmkbjtmelkfi.supabase.co';
+// Publishable key: safe to ship in the page. The OpenRouter key lives only in the Edge Function.
+const SUPABASE_KEY = 'sb_publishable_uf9SDtY2gHE-0RS1dUATKw_ed2LMSDT';
+const CHAT_URL = SUPABASE_URL + '/functions/v1/chat';
+const MODELS_URL = 'https://openrouter.ai/api/v1/models';
+const MODEL_STORAGE_KEY = 'chat_model';
+// "auto" lets the server pick a free model (and switch if one is busy).
+const AUTO = 'auto';
+const AUTO_LABEL = 'Auto · picks a free model for you';
+// Classifiers that can't chat; never offered.
+const NOT_CHAT = /(safety|guard|moderation)/i;
+// On a website (not a double-clicked file) email links can come straight back to this page.
+const HOSTED = location.protocol === 'https:' || location.protocol === 'http:';
+// Phones: Return adds a new line and the Send button sends.
+const IS_TOUCH = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+
+const $ = (id) => document.getElementById(id);
+
+let messages = [];        // conversation sent to the model: [{ role, content }]
+let sessionId = null;     // current conversation id in chat_messages
+let currentUserId = null;
+let controller = null;    // AbortController while a reply is streaming
+let autoModel = null;     // model Auto used last, so a conversation keeps the same model
+let signUpMode = false;
+
+// ---------- small helpers ----------
+
+function loadSetting(key) {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+function saveSetting(key, value) {
+  try { localStorage.setItem(key, value); } catch {}
+}
+
+function newId() {
+  if (window.crypto?.randomUUID) return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const h = [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
+class ChatError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+// ---------- startup ----------
+
+// iPhone: size the app to the visible area so the keyboard never hides the header or composer.
+function fitViewport() {
+  const vv = window.visualViewport;
+  const root = document.documentElement;
+  const stick = isNearBottom();
+  root.style.setProperty('--app-height', (vv ? vv.height : window.innerHeight) + 'px');
+  root.classList.toggle('kb', !!vv && window.innerHeight - vv.height > 120);
+  if (vv) window.scrollTo(0, 0);
+  if (stick) scrollToBottom();
+}
+window.visualViewport?.addEventListener('resize', fitViewport);
+window.addEventListener('resize', fitViewport);
+fitViewport();
+
+// A confirmation link that failed (e.g. expired) comes back with the reason in the URL.
+const linkError = new URLSearchParams(location.hash.slice(1)).get('error_description');
+if (linkError) {
+  setLoginMessage(linkError + ' Log in, or sign up again for a new link.', 'error');
+  history.replaceState(null, '', location.pathname);
+}
+
+if (!window.supabase) {
+  $('loading').textContent = "Couldn't load Supabase. Check your internet connection and reload the page.";
+  throw new Error('supabase-js failed to load');
+}
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// Fires once on load (INITIAL_SESSION) and on every login, logout and token refresh.
+// Supabase calls must not be awaited inside this callback, so defer the work.
+sb.auth.onAuthStateChange((_event, session) => {
+  setTimeout(() => showFor(session), 0);
+});
+
+loadModels();
+
+async function showFor(session) {
+  $('loading').hidden = true;
+  const user = session?.user ?? null;
+
+  if (!user) {
+    // Supabase can repeat "signed out" events; don't wipe a half-typed password.
+    if (currentUserId === null && !$('login-view').hidden) return;
+    currentUserId = null;
+    sessionId = null;
+    controller?.abort();
+    clearChat();
+    $('chat-view').hidden = true;
+    $('login-view').hidden = false;
+    $('password').value = '';
+    $('email').focus();
+    return;
+  }
+
+  if (user.id === currentUserId) return;  // token refresh, nothing to redraw
+  currentUserId = user.id;
+  $('login-view').hidden = true;
+  $('chat-view').hidden = false;
+  $('user-email').textContent = user.email ?? '';
+  $('user-email').title = user.email ?? '';
+  await loadHistory();
+  $('input').focus();
+}
+
+// ---------- login ----------
+
+function setMode(signUp) {
+  signUpMode = signUp;
+  $('login-submit').textContent = signUp ? 'Sign up' : 'Log in';
+  $('login-subtitle').textContent = signUp ? 'Create an account to start chatting.' : 'Log in to start chatting.';
+  $('toggle-text').textContent = signUp ? 'Already have an account?' : 'No account yet?';
+  $('mode-toggle').textContent = signUp ? 'Log in' : 'Create an account';
+  $('password').autocomplete = signUp ? 'new-password' : 'current-password';
+  setLoginMessage('');
+}
+
+function setLoginMessage(text, kind = 'info') {
+  const el = $('login-message');
+  el.textContent = text;
+  el.className = 'message ' + kind;
+}
+
+function friendlyAuthError(err) {
+  const code = err?.code ?? '';
+  const msg = err?.message ?? String(err);
+  if (code === 'invalid_credentials' || /invalid login credentials/i.test(msg)) return 'Wrong email or password.';
+  if (code === 'email_not_confirmed' || /not confirmed/i.test(msg)) return 'Please confirm your email first. Check your inbox for the link.';
+  if (code === 'user_already_exists' || /already registered/i.test(msg)) return 'That email already has an account. Log in instead.';
+  if (code === 'signup_disabled' || /signups not allowed/i.test(msg)) return 'New sign-ups are turned off.';
+  if (err?.status === 429 || /rate limit|too many/i.test(msg)) return 'Too many attempts. Please wait a few minutes and try again.';
+  return msg;
+}
+
+$('mode-toggle').addEventListener('click', () => setMode(!signUpMode));
+
+$('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = $('email').value.trim();
+  const password = $('password').value;
+  if (!email || !password) return setLoginMessage('Enter your email and password.', 'error');
+  if (signUpMode && password.length < 6) return setLoginMessage('Password must be at least 6 characters.', 'error');
+
+  setLoginMessage('');
+  $('login-submit').disabled = true;
+  try {
+    if (signUpMode) {
+      const { data, error } = await sb.auth.signUp({
+        email,
+        password,
+        options: HOSTED ? { emailRedirectTo: location.origin + location.pathname } : undefined,
+      });
+      if (error) throw error;
+      if (!data.session) {
+        setMode(false);
+        setLoginMessage(HOSTED
+          ? 'Check your email and tap the confirmation link. It opens this page and logs you in.'
+          : 'Check your email and click the confirmation link. It may open a page that fails to load; that is fine. Then come back here and log in.');
+      }
+    } else {
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+    }
+  } catch (err) {
+    setLoginMessage(friendlyAuthError(err), 'error');
+  } finally {
+    $('login-submit').disabled = false;
+  }
+});
+
+$('logout').addEventListener('click', () => sb.auth.signOut());
+
+// ---------- free models ----------
+
+function filterFreeModels(list) {
+  return (list ?? [])
+    .filter((m) => typeof m?.id === 'string' && m.id.endsWith(':free') && !NOT_CHAT.test(m.id))
+    .filter((m) => {
+      const out = m.architecture?.output_modalities;
+      return !Array.isArray(out) || out.includes('text');
+    })
+    .sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
+}
+
+function formatContext(n) {
+  if (!n) return '? ctx';
+  return n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M ctx` : `${Math.round(n / 1000)}K ctx`;
+}
+
+// Auto is always available (the server keeps its own list); specific models are added once loaded.
+async function loadModels() {
+  const select = $('model');
+  const wanted = select.value || loadSetting(MODEL_STORAGE_KEY) || AUTO;
+  select.replaceChildren(new Option(AUTO_LABEL, AUTO));
+  $('retry-models').hidden = true;
+
+  try {
+    const res = await fetch(MODELS_URL);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const free = filterFreeModels((await res.json()).data);
+    select.append(...free.map((m) => new Option(`${m.name || m.id} · ${formatContext(m.context_length)}`, m.id)));
+  } catch {
+    $('retry-models').hidden = false;  // Auto still works; Retry loads the specific models
+  }
+  select.value = [...select.options].some((o) => o.value === wanted) ? wanted : AUTO;
+  updateSendState();
+}
+
+$('model').addEventListener('change', (e) => saveSetting(MODEL_STORAGE_KEY, e.target.value));
+$('retry-models').addEventListener('click', loadModels);
+
+// ---------- chat rendering ----------
+
+function clearChat() {
+  messages = [];
+  const empty = document.createElement('div');
+  empty.className = 'empty';
+  empty.innerHTML = '<strong>What can I help with?</strong>Only free models are used, so chatting never costs anything.';
+  $('thread').replaceChildren(empty);
+}
+
+function isNearBottom() {
+  const el = $('messages');
+  return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+}
+
+function scrollToBottom() {
+  const el = $('messages');
+  el.scrollTop = el.scrollHeight;
+}
+
+function addBubble(role, text, model) {
+  $('thread').querySelector('.empty')?.remove();
+  const row = document.createElement('div');
+  row.className = 'msg ' + role;
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = text;
+  row.appendChild(bubble);
+  if (model) setCaption(row, model);
+  $('thread').appendChild(row);
+  return { row, bubble };
+}
+
+function setCaption(row, text) {
+  let cap = row.querySelector('.caption');
+  if (!cap) {
+    cap = document.createElement('div');
+    cap.className = 'caption';
+    row.appendChild(cap);
+  }
+  cap.textContent = text;
+}
+
+function showNote(text, kind = 'error') {
+  $('thread').querySelector('.empty')?.remove();
+  const note = document.createElement('div');
+  note.className = 'note ' + kind;
+  note.textContent = text;
+  $('thread').appendChild(note);
+  scrollToBottom();
+}
+
+// ---------- history (Supabase, protected by row-level security) ----------
+
+async function loadHistory() {
+  clearChat();
+  sessionId = newId();
+
+  const { data: latest, error } = await sb
+    .from('chat_messages')
+    .select('session_id')
+    .order('id', { ascending: false })
+    .limit(1);
+  if (error) return showNote("Couldn't load your previous chat.", 'warn');
+  if (!latest.length) return;
+
+  const sid = latest[0].session_id;
+  const { data: rows, error: rowsError } = await sb
+    .from('chat_messages')
+    .select('role, content, model')
+    .eq('session_id', sid)
+    .order('id');
+  if (rowsError) return showNote("Couldn't load your previous chat.", 'warn');
+
+  sessionId = sid;
+  for (const r of rows) {
+    messages.push({ role: r.role, content: r.content });
+    addBubble(r.role, r.content, r.model);
+  }
+  autoModel = rows.filter((r) => r.role === 'assistant' && r.model).at(-1)?.model ?? null;
+  scrollToBottom();
+}
+
+async function saveTurn(sid, userText, reply, model) {
+  const { error } = await sb.from('chat_messages').insert([
+    { session_id: sid, role: 'user', content: userText },
+    { session_id: sid, role: 'assistant', content: reply, model },
+  ]);
+  if (error && sid === sessionId) showNote("Couldn't save this message.", 'warn');
+}
+
+$('new-chat').addEventListener('click', () => {
+  controller?.abort();
+  clearChat();
+  sessionId = newId();
+  $('input').focus();
+});
+
+// ---------- sending and streaming ----------
+
+async function readErrorMessage(res) {
+  try {
+    const body = await res.json();
+    return body?.error?.message || body?.message || body?.msg || res.statusText;
+  } catch {
+    return res.statusText || `Request failed (${res.status}).`;
+  }
+}
+
+function friendlyChatError(err) {
+  if (err instanceof ChatError) {
+    if (err.status === 401) return 'Your session expired. Please log out and log in again.';
+    if (err.status === 429) {
+      if (/per-day|per day/i.test(err.message)) return "Today's free message limit is used up. It's shared by everyone using this chatbot and resets at midnight UTC.";
+      if (/per-min/i.test(err.message)) return 'Too many messages in the last minute. Wait a moment and try again.';
+      return 'The free models are busy right now. Wait a moment and try again.';
+    }
+    if (err.status === 402) return 'The OpenRouter account behind this app has a negative balance, so even free models are blocked right now.';
+    return err.message || `Request failed (${err.status}).`;
+  }
+  return "Couldn't reach the server. Check your internet connection.";
+}
+
+function setStreaming(on) {
+  $('send').textContent = on ? 'Stop' : 'Send';
+  updateSendState();
+}
+
+function updateSendState() {
+  $('send').disabled = !controller && !$('model').value;
+}
+
+async function send(text) {
+  const model = $('model').value;
+  if (!text || !model || controller) return;
+
+  const sid = sessionId;
+  messages.push({ role: 'user', content: text });
+  const userRow = addBubble('user', text).row;
+  const { row, bubble } = addBubble('assistant', 'Thinking…');
+  bubble.classList.add('thinking');
+  scrollToBottom();
+
+  controller = new AbortController();
+  setStreaming(true);
+
+  let reply = '';
+  let usedModel = model;
+  let errorText = null;
+  let aborted = false;
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) throw new ChatError(401, 'Not logged in.');
+
+    const res = await fetch(CHAT_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + session.access_token,
+        apikey: SUPABASE_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ model, prefer: model === AUTO ? autoModel : undefined, messages }),
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new ChatError(res.status, await readErrorMessage(res));
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    read: while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let newline;
+      while ((newline = buffer.indexOf('\n')) !== -1) {
+        const line = buffer.slice(0, newline).trim();
+        buffer = buffer.slice(newline + 1);
+        if (!line.startsWith('data:')) continue;  // blank lines and ": OPENROUTER PROCESSING" comments
+
+        const payload = line.slice(5).trim();
+        if (payload === '[DONE]') {
+          reader.cancel().catch(() => {});
+          break read;
+        }
+
+        let chunk;
+        try { chunk = JSON.parse(payload); } catch { continue; }
+        if (chunk.error) throw new ChatError(chunk.error.code, chunk.error.message);
+        if (chunk.model) usedModel = chunk.model;
+
+        const delta = chunk.choices?.[0]?.delta?.content;
+        if (delta) {
+          const stick = isNearBottom();
+          if (!reply) bubble.classList.remove('thinking');
+          reply += delta;
+          bubble.textContent = reply;
+          if (stick) scrollToBottom();
+        }
+      }
+    }
+  } catch (err) {
+    if (err?.name === 'AbortError') aborted = true;
+    else errorText = friendlyChatError(err);
+  } finally {
+    controller = null;
+    setStreaming(false);
+  }
+
+  // "New chat" or logout happened while streaming: keep the old chat's record, leave the screen alone.
+  if (sid !== sessionId) {
+    if (reply && currentUserId) saveTurn(sid, text, reply, usedModel);
+    return;
+  }
+
+  if (reply) {
+    messages.push({ role: 'assistant', content: reply });
+    if (model === AUTO) autoModel = usedModel;
+    bubble.classList.remove('thinking');
+    setCaption(row, (model === AUTO ? 'Auto · ' : '') + usedModel + (aborted ? ' · stopped' : ''));
+    if (errorText) showNote(errorText);
+    saveTurn(sid, text, reply, usedModel);
+  } else {
+    // Nothing arrived: undo the turn and give the text back so it can be resent.
+    messages.pop();
+    row.remove();
+    userRow.remove();
+    if (!messages.length) clearChat();
+    if (!aborted) showNote(errorText ?? 'The model sent an empty reply. Try again or pick another model.');
+    $('input').value = text;
+    autosize();
+  }
+  $('input').focus();
+}
+
+// ---------- composer ----------
+
+function autosize() {
+  const el = $('input');
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight + 2, 200) + 'px';
+}
+
+$('input').addEventListener('input', autosize);
+
+$('input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !IS_TOUCH) {
+    e.preventDefault();
+    $('composer').requestSubmit();
+  }
+});
+
+$('composer').addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (controller) {
+    controller.abort();
+    return;
+  }
+  const text = $('input').value.trim();
+  if (!text || !$('model').value) return;
+  $('input').value = '';
+  autosize();
+  send(text);
+});
+
+clearChat();
+</script>
+</body>
+</html>
