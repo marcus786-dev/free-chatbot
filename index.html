@@ -321,6 +321,7 @@ let sessionId = null;     // current conversation id in chat_messages
 let currentUserId = null;
 let controller = null;    // AbortController while a reply is streaming
 let autoModel = null;     // model Auto used last, so a conversation keeps the same model
+let assignedModels = [];  // models the admin gave this user; empty = every free model
 let signUpMode = false;
 
 // ---------- small helpers ----------
@@ -414,6 +415,10 @@ async function showFor(session) {
   // Ask the server for the current user record: the admin flag can be newer than the saved session.
   sb.auth.getUser().then(({ data }) => {
     $('admin-link').hidden = data.user?.app_metadata?.is_admin !== true;
+  });
+  sb.from('user_models').select('model').then(({ data }) => {
+    assignedModels = (data ?? []).map((r) => r.model);
+    loadModels();
   });
   await loadHistory();
   $('input').focus();
@@ -526,7 +531,8 @@ async function loadModels() {
   try {
     const res = await fetch(MODELS_URL);
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    const free = filterFreeModels((await res.json()).data);
+    let free = filterFreeModels((await res.json()).data);
+    if (assignedModels.length) free = free.filter((m) => assignedModels.includes(m.id));
     select.append(...free.map((m) => new Option(`${m.name || m.id} · ${formatContext(m.context_length)}`, m.id)));
   } catch {
     $('retry-models').hidden = false;  // Auto still works; Retry loads the specific models
