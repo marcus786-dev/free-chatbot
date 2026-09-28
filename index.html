@@ -84,6 +84,20 @@
   button.primary { background: var(--accent); color: var(--accent-text); border-color: transparent; }
   button.primary:hover:not(:disabled) { filter: brightness(1.08); }
   button.link { background: none; border: none; padding: 0; color: var(--accent); }
+  a.button {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 7px 12px;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  a.button:hover { border-color: var(--muted); }
+  @media (pointer: coarse) { a.button { min-height: 44px; } }
+  .fine-print { font-size: 12px; color: var(--muted); text-align: center; }
   input, select, textarea {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -255,6 +269,7 @@
       <span id="toggle-text" class="muted">No account yet?</span>
       <button id="mode-toggle" type="button" class="link">Create an account</button>
     </p>
+    <p class="fine-print">Chats are saved to your account, and the admin can read them.</p>
   </form>
 </div>
 
@@ -267,6 +282,7 @@
       <button id="new-chat" type="button">New chat</button>
     </div>
     <div class="account">
+      <a id="admin-link" class="button" href="admin.html" hidden>Admin</a>
       <span id="user-email"></span>
       <button id="logout" type="button">Log out</button>
     </div>
@@ -394,6 +410,11 @@ async function showFor(session) {
   $('chat-view').hidden = false;
   $('user-email').textContent = user.email ?? '';
   $('user-email').title = user.email ?? '';
+  $('admin-link').hidden = true;
+  // Ask the server for the current user record: the admin flag can be newer than the saved session.
+  sb.auth.getUser().then(({ data }) => {
+    $('admin-link').hidden = data.user?.app_metadata?.is_admin !== true;
+  });
   await loadHistory();
   $('input').focus();
 }
@@ -407,7 +428,17 @@ function setMode(signUp) {
   $('toggle-text').textContent = signUp ? 'Already have an account?' : 'No account yet?';
   $('mode-toggle').textContent = signUp ? 'Log in' : 'Create an account';
   $('password').autocomplete = signUp ? 'new-password' : 'current-password';
+  $('login-submit').disabled = false;
   setLoginMessage('');
+}
+
+// The admin can close sign-ups; say so before someone makes an account that can't chat.
+async function checkSignupsOpen() {
+  const { data } = await sb.from('app_settings').select('signups_closed_at').maybeSingle();
+  if (signUpMode && data?.signups_closed_at) {
+    setLoginMessage("Sign-ups are closed right now. New accounts can't chat until the admin opens them again.", 'error');
+    $('login-submit').disabled = true;
+  }
 }
 
 function setLoginMessage(text, kind = 'info') {
@@ -427,7 +458,10 @@ function friendlyAuthError(err) {
   return msg;
 }
 
-$('mode-toggle').addEventListener('click', () => setMode(!signUpMode));
+$('mode-toggle').addEventListener('click', () => {
+  setMode(!signUpMode);
+  if (signUpMode) checkSignupsOpen();
+});
 
 $('login-form').addEventListener('submit', async (e) => {
   e.preventDefault();

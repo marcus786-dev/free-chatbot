@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1f1f23" media="(prefers-color-scheme: dark)">
+<meta name="robots" content="noindex">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>Chatbot Admin</title>
+<style>
+  :root {
+    --bg: #f6f6f4;
+    --surface: #ffffff;
+    --text: #1c1c1a;
+    --muted: #6b6b66;
+    --border: #e3e2dd;
+    --accent: #5b4bd6;
+    --accent-text: #ffffff;
+    --assistant-bg: #ffffff;
+    --error-bg: #fdecec;
+    --error-text: #a32121;
+    --warn-bg: #fff4dc;
+    --warn-text: #7a5200;
+    --info-bg: #ecebfb;
+    --info-text: #3d3196;
+    --ok-bg: #e5f5ea;
+    --ok-text: #1d6b37;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151517;
+      --surface: #1f1f23;
+      --text: #ececec;
+      --muted: #9a9aa2;
+      --border: #2e2e34;
+      --accent: #7c6ff0;
+      --accent-text: #ffffff;
+      --assistant-bg: #232328;
+      --error-bg: #3a1d1d;
+      --error-text: #ffa3a3;
+      --warn-bg: #362b12;
+      --warn-text: #f3cf7a;
+      --info-bg: #25224a;
+      --info-text: #c9c3ff;
+      --ok-bg: #173323;
+      --ok-text: #8fdca8;
+      color-scheme: dark;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    min-height: 100vh;
+  }
+  h2 { font-size: 17px; margin: 28px 0 10px; }
+  h3 { font-size: 15px; margin: 14px 0 10px; color: var(--muted); font-weight: 500; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+
+  button, .button {
+    font: inherit;
+    color: var(--text);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 8px;
+    padding: 7px 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: manipulation;
+  }
+  button:hover:not(:disabled), .button:hover { border-color: var(--muted); }
+  button:disabled { opacity: .5; cursor: default; }
+  button:focus-visible, .button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: transparent; }
+  button.danger { background: var(--error-bg); color: var(--error-text); border-color: transparent; }
+  button.back { border: none; background: none; padding: 4px 0; color: var(--accent); }
+  @media (pointer: coarse) { button, .button { min-height: 44px; } }
+
+  .pill {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--border);
+    color: var(--muted);
+  }
+  .pill.ok { background: var(--ok-bg); color: var(--ok-text); }
+  .pill.warn { background: var(--warn-bg); color: var(--warn-text); }
+  .pill.error { background: var(--error-bg); color: var(--error-text); }
+  .pill.info { background: var(--info-bg); color: var(--info-text); }
+
+  /* Gate: shown while loading, or to anyone who isn't the admin */
+  .gate {
+    min-height: 100vh;
+    display: flex;
+    padding: max(16px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px));
+  }
+  .gate-card {
+    margin: auto;
+    max-width: 360px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+  }
+
+  /* Admin layout */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+    padding:
+      calc(10px + env(safe-area-inset-top, 0px))
+      max(16px, env(safe-area-inset-right, 0px))
+      10px
+      max(16px, env(safe-area-inset-left, 0px));
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { font-weight: 650; font-size: 16px; }
+  .top-actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  #admin-email { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 26ch; }
+  @media (max-width: 560px) { #admin-email { display: none; } }
+
+  main {
+    max-width: 960px;
+    margin: 0 auto;
+    padding:
+      20px
+      max(16px, env(safe-area-inset-right, 0px))
+      calc(40px + env(safe-area-inset-bottom, 0px))
+      max(16px, env(safe-area-inset-left, 0px));
+  }
+
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+  .stat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .stat .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .stat .value { font-size: 28px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .stat .sub { font-size: 12px; color: var(--muted); }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .signups {
+    margin-top: 12px;
+    padding: 14px 16px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .signups .row { display: flex; align-items: center; gap: 8px; }
+  .signups p { margin: 4px 0 0; }
+  .signups-text { min-width: 0; flex: 1 1 260px; }
+
+  .users { display: flex; flex-direction: column; }
+  .user {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 16px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 4px 16px;
+    align-items: center;
+  }
+  .user + .user { margin-top: 8px; }
+  .user .who { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-width: 0; }
+  .user .email { font-weight: 600; overflow-wrap: anywhere; }
+  .user .meta { margin: 0; font-size: 13px; color: var(--muted); grid-column: 1; }
+  .user .actions { grid-column: 2; grid-row: 1 / span 2; display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+  @media (max-width: 640px) {
+    .user { grid-template-columns: 1fr; }
+    .user .actions { grid-column: 1; grid-row: auto; justify-content: flex-start; margin-top: 6px; }
+  }
+
+  .sessions { display: flex; flex-direction: column; gap: 8px; }
+  .session {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    text-align: left;
+    white-space: normal;
+    padding: 12px 14px;
+    border-radius: 12px;
+  }
+  .session-when { font-size: 13px; color: var(--muted); }
+  .session-preview { overflow-wrap: anywhere; }
+
+  .thread { display: flex; flex-direction: column; gap: 12px; }
+  .msg { display: flex; flex-direction: column; max-width: 85%; }
+  .msg.user { align-self: flex-end; align-items: flex-end; }
+  .msg.assistant { align-self: flex-start; align-items: flex-start; }
+  .bubble { padding: 9px 13px; border-radius: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg.user .bubble { background: var(--accent); color: var(--accent-text); border-bottom-right-radius: 4px; }
+  .msg.assistant .bubble { background: var(--assistant-bg); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+  .caption { font-size: 12px; color: var(--muted); margin-top: 3px; padding: 0 4px; }
+  .error-text { color: var(--error-text); }
+
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%);
+    max-width: calc(100% - 32px);
+    padding: 10px 16px;
+    border-radius: 10px;
+    font-size: 14px;
+    box-shadow: 0 6px 24px rgb(0 0 0 / .18);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    z-index: 5;
+  }
+  .toast.ok { background: var(--ok-bg); color: var(--ok-text); border-color: transparent; }
+  .toast.error { background: var(--error-bg); color: var(--error-text); border-color: transparent; }
+</style>
+</head>
+<body>
+
+<div id="gate" class="gate">
+  <div class="gate-card">
+    <p id="gate-text" class="muted">Loading…</p>
+    <a id="gate-link" class="button" href="./" hidden>Go to the chatbot</a>
+  </div>
+</div>
+
+<div id="app" hidden>
+  <header class="topbar">
+    <div class="brand">Chatbot admin</div>
+    <div class="top-actions">
+      <span id="admin-email" class="muted small"></span>
+      <button id="refresh" type="button">Refresh</button>
+      <a class="button" href="./">Back to chat</a>
+    </div>
+  </header>
+
+  <main>
+    <section id="dashboard">
+      <div class="stats">
+        <div class="stat"><span class="label">Users</span><span id="stat-users" class="value">–</span></div>
+        <div class="stat"><span class="label">Messages today</span><span id="stat-messages" class="value">–</span><span class="sub">Since 00:00 UTC</span></div>
+        <div class="stat"><span class="label">Active today</span><span id="stat-active" class="value">–</span><span class="sub">Users who chatted</span></div>
+        <div class="stat"><span class="label">Free requests left</span><span id="stat-quota" class="value">–</span><span id="stat-quota-sub" class="sub"></span></div>
+      </div>
+
+      <div class="panel signups">
+        <div class="signups-text">
+          <div class="row"><strong>Sign-ups</strong><span id="signup-pill" class="pill">…</span></div>
+          <p id="signup-text" class="muted small"></p>
+        </div>
+        <button id="signup-toggle" type="button">…</button>
+      </div>
+
+      <h2>Users <span id="user-count" class="muted"></span></h2>
+      <div id="users" class="users"><p class="muted">Loading…</p></div>
+    </section>
+
+    <section id="chats" hidden>
+      <button id="back-users" type="button" class="back">← All users</button>
+      <h2 id="chats-title"></h2>
+      <div id="sessions" class="sessions"></div>
+      <div id="transcript" hidden>
+        <button id="back-sessions" type="button" class="back">← All chats</button>
+        <h3 id="transcript-title"></h3>
+        <div id="transcript-body" class="thread"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL = 'https://qkqwvhtwcmkbjtmelkfi.supabase.co';
+// Publishable key: safe to ship. Every admin action is checked by the admin Edge Function.
+const SUPABASE_KEY = 'sb_publishable_uf9SDtY2gHE-0RS1dUATKw_ed2LMSDT';
+const ADMIN_URL = SUPABASE_URL + '/functions/v1/admin';
+
+const $ = (id) => document.getElementById(id);
+
+let users = [];
+let started = false;
+
+// ---------- helpers ----------
+
+function fmt(iso) {
+  return iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'never';
+}
+function fmtDay(iso) {
+  return new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
+}
+
+// Small DOM builder. Text always goes in via textContent, never as HTML.
+function el(tag, props = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(props)) {
+    if (value === undefined || value === null || value === false) continue;
+    if (key === 'class') node.className = value;
+    else if (key === 'text') node.textContent = value;
+    else if (key.startsWith('on')) node.addEventListener(key.slice(2), value);
+    else node.setAttribute(key, value === true ? '' : value);
+  }
+  node.append(...children);
+  return node;
+}
+
+function toast(text, kind = 'info') {
+  const t = $('toast');
+  t.textContent = text;
+  t.className = 'toast ' + kind;
+  t.hidden = false;
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => { t.hidden = true; }, 4000);
+}
+
+function showGate(text, withLink) {
+  $('gate-text').textContent = text;
+  $('gate-link').hidden = !withLink;
+  $('gate').hidden = false;
+  $('app').hidden = true;
+}
+
+async function api(action, params = {}) {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) throw new Error('You are logged out. Log in to the chatbot again.');
+  const res = await fetch(ADMIN_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer ' + session.access_token,
+      apikey: SUPABASE_KEY,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ action, ...params }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body?.error?.message || body?.message || `Request failed (${res.status}).`);
+  return body;
+}
+
+// ---------- startup ----------
+
+if (!window.supabase) {
+  showGate("Couldn't load Supabase. Check your internet connection and reload.", false);
+  throw new Error('supabase-js failed to load');
+}
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+sb.auth.onAuthStateChange((_event, session) => {
+  setTimeout(() => start(session), 0);
+});
+
+async function start(session) {
+  if (!session) {
+    started = false;
+    return showGate('Log in to the chatbot first, then come back to this page.', true);
+  }
+  if (started) return;
+  // Fresh user record from the server; the flag is checked again server-side on every action.
+  const { data, error } = await sb.auth.getUser();
+  if (error || data.user?.app_metadata?.is_admin !== true) {
+    return showGate('This page is only for the admin.', true);
+  }
+  started = true;
+  $('admin-email').textContent = data.user.email ?? '';
+  $('gate').hidden = true;
+  $('app').hidden = false;
+  showDashboard();
+  await loadDashboard();
+}
+
+// ---------- dashboard ----------
+
+function showDashboard() {
+  $('chats').hidden = true;
+  $('dashboard').hidden = false;
+}
+
+async function loadDashboard() {
+  $('refresh').disabled = true;
+  try {
+    const { overview, users: list } = await api('dashboard');
+    users = list;
+    renderOverview(overview);
+    renderUsers();
+  } catch (err) {
+    toast(err.message, 'error');
+  } finally {
+    $('refresh').disabled = false;
+  }
+}
+
+function renderOverview(o) {
+  $('stat-users').textContent = o.users;
+  $('stat-messages').textContent = o.messagesToday;
+  $('stat-active').textContent = o.activeToday;
+  if (o.quota) {
+    $('stat-quota').textContent = `${o.quota.remaining} / ${o.quota.limit}`;
+    $('stat-quota-sub').textContent = `${o.quota.used} used today · resets 00:00 UTC`;
+  } else {
+    $('stat-quota').textContent = '–';
+    $('stat-quota-sub').textContent = "Couldn't read this from OpenRouter";
+  }
+
+  const closed = Boolean(o.signupsClosedAt);
+  $('signup-pill').textContent = closed ? 'Closed' : 'Open';
+  $('signup-pill').className = 'pill ' + (closed ? 'error' : 'ok');
+  $('signup-text').textContent = closed
+    ? `Closed since ${fmt(o.signupsClosedAt)}. Accounts made after that can't chat until you open sign-ups again.`
+    : 'Anyone with the link can create an account and start chatting.';
+  $('signup-toggle').textContent = closed ? 'Open sign-ups' : 'Close sign-ups';
+  $('signup-toggle').dataset.open = String(closed);  // what clicking will do
+}
+
+function statusPills(u) {
+  const pills = [];
+  if (u.isAdmin) pills.push(['Admin', 'info']);
+  if (u.blocked) pills.push(['Blocked', 'error']);
+  else if (u.waiting) pills.push(['Waiting (sign-ups closed)', 'warn']);
+  if (!u.confirmed) pills.push(['Email not confirmed', '']);
+  return pills.map(([text, kind]) => el('span', { class: 'pill ' + kind, text }));
+}
+
+function renderUsers() {
+  $('user-count').textContent = `(${users.length})`;
+  if (!users.length) {
+    $('users').replaceChildren(el('p', { class: 'muted', text: 'No users yet.' }));
+    return;
+  }
+  $('users').replaceChildren(...users.map(userRow));
+}
+
+function userRow(u) {
+  const plural = u.messages === 1 ? '' : 's';
+  const meta = [
+    `Joined ${fmtDay(u.createdAt)}`,
+    `last login ${fmt(u.lastSignInAt)}`,
+    `${u.messages} message${plural}` + (u.lastMessageAt ? `, latest ${fmt(u.lastMessageAt)}` : ''),
+  ].join(' · ');
+
+  const actions = el('div', { class: 'actions' },
+    el('button', { type: 'button', text: 'View chats', disabled: u.messages === 0, onclick: () => openUser(u) }),
+  );
+  if (!u.isAdmin) {
+    actions.append(
+      el('button', {
+        type: 'button',
+        text: u.blocked ? 'Unblock' : 'Block',
+        onclick: (e) => act(e.currentTarget, u.blocked ? 'unblock' : 'block', u),
+      }),
+      deleteButton(u),
+    );
+  }
+
+  return el('article', { class: 'user' },
+    el('div', { class: 'who' }, el('span', { class: 'email', text: u.email }), ...statusPills(u)),
+    el('p', { class: 'meta', text: meta }),
+    actions,
+  );
+}
+
+// Delete needs a second tap within 4 seconds.
+function deleteButton(u) {
+  const btn = el('button', { type: 'button', text: 'Delete' });
+  let armed = false;
+  let timer;
+  btn.addEventListener('click', () => {
+    if (!armed) {
+      armed = true;
+      btn.textContent = 'Tap again to delete';
+      btn.classList.add('danger');
+      timer = setTimeout(() => {
+        armed = false;
+        btn.textContent = 'Delete';
+        btn.classList.remove('danger');
+      }, 4000);
+      return;
+    }
+    clearTimeout(timer);
+    act(btn, 'delete', u);
+  });
+  return btn;
+}
+
+async function act(btn, action, u) {
+  btn.disabled = true;
+  try {
+    await api(action, { userId: u.id });
+    const done = {
+      block: `Blocked ${u.email}. They can still log in but can't chat.`,
+      unblock: `Unblocked ${u.email}.`,
+      delete: `Deleted ${u.email} and all their chats.`,
+    };
+    toast(done[action], 'ok');
+    await loadDashboard();
+  } catch (err) {
+    toast(err.message, 'error');
+    btn.disabled = false;
+  }
+}
+
+$('signup-toggle').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  const open = btn.dataset.open === 'true';
+  btn.disabled = true;
+  try {
+    await api('set_signups', { open });
+    toast(open ? 'Sign-ups are open.' : 'Sign-ups are closed. New accounts can no longer chat.', 'ok');
+    await loadDashboard();
+  } catch (err) {
+    toast(err.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$('refresh').addEventListener('click', loadDashboard);
+
+// ---------- reading chats ----------
+
+async function openUser(u) {
+  $('dashboard').hidden = true;
+  $('chats').hidden = false;
+  $('transcript').hidden = true;
+  $('sessions').hidden = false;
+  $('chats-title').textContent = `Chats of ${u.email}`;
+  $('sessions').replaceChildren(el('p', { class: 'muted', text: 'Loading…' }));
+  window.scrollTo(0, 0);
+
+  try {
+    const { sessions } = await api('sessions', { userId: u.id });
+    if (!sessions.length) {
+      $('sessions').replaceChildren(el('p', { class: 'muted', text: 'No saved chats.' }));
+      return;
+    }
+    $('sessions').replaceChildren(...sessions.map((s) =>
+      el('button', { type: 'button', class: 'session', onclick: () => openTranscript(u, s) },
+        el('span', { class: 'session-when', text: `${fmt(s.lastAt)} · ${s.messages} messages` }),
+        el('span', { class: 'session-preview', text: s.preview || '(no text)' }),
+      )));
+  } catch (err) {
+    $('sessions').replaceChildren(el('p', { class: 'error-text', text: err.message }));
+  }
+}
+
+async function openTranscript(u, s) {
+  $('sessions').hidden = true;
+  $('transcript').hidden = false;
+  $('transcript-title').textContent = `Chat started ${fmt(s.startedAt)}`;
+  $('transcript-body').replaceChildren(el('p', { class: 'muted', text: 'Loading…' }));
+  window.scrollTo(0, 0);
+
+  try {
+    const { messages } = await api('transcript', { userId: u.id, sessionId: s.sessionId });
+    $('transcript-body').replaceChildren(...messages.map((m) =>
+      el('div', { class: 'msg ' + m.role },
+        el('div', { class: 'bubble', text: m.content }),
+        el('div', { class: 'caption', text: m.role === 'assistant' && m.model ? `${m.model} · ${fmt(m.created_at)}` : fmt(m.created_at) }),
+      )));
+  } catch (err) {
+    $('transcript-body').replaceChildren(el('p', { class: 'error-text', text: err.message }));
+  }
+}
+
+$('back-users').addEventListener('click', () => {
+  showDashboard();
+  window.scrollTo(0, 0);
+});
+$('back-sessions').addEventListener('click', () => {
+  $('transcript').hidden = true;
+  $('sessions').hidden = false;
+});
+</script>
+</body>
+</html>
