@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta id="tc-light" name="theme-color" content="#fff7ee" media="(prefers-color-scheme: light)">
 <meta id="tc-dark" name="theme-color" content="#1e1714" media="(prefers-color-scheme: dark)">
-<!-- Apply the saved theme before first paint so there is no flash of the wrong colors. -->
+<!-- Apply the saved theme, accent, text size and language before first paint so nothing flashes. -->
 <script>
 window.applyTheme = function (t) {
   var root = document.documentElement;
@@ -15,9 +15,23 @@ window.applyTheme = function (t) {
   document.getElementById('tc-dark').content = t === 'light' ? light : dark;
 };
 (function () {
-  var saved = null;
-  try { saved = localStorage.getItem('chat_theme'); } catch (e) {}
-  window.applyTheme(saved);
+  var s = {};
+  try { s = JSON.parse(localStorage.getItem('chat_settings') || '{}') || {}; } catch (e) {}
+  var root = document.documentElement;
+  var theme = s.theme;
+  if (!theme) { try { theme = localStorage.getItem('chat_theme'); } catch (e) {} }
+  window.applyTheme(theme);
+  if (s.accent) root.dataset.accent = s.accent;
+  if (s.textSize) root.dataset.size = s.textSize;
+  if (s.density) root.dataset.density = s.density;
+  root.dataset.motion = s.reduceMotion ? 'reduce' : 'normal';
+  root.dataset.showmodel = s.showModel === false ? '0' : '1';
+  var lang = s.language;
+  if (lang !== 'da' && lang !== 'en') {
+    var prefs = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || 'en'];
+    lang = /^da\b/i.test(prefs[0]) ? 'da' : 'en';
+  }
+  root.lang = lang;
 })();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -31,1245 +45,157 @@ window.applyTheme = function (t) {
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="css/app.css">
 <title>Free Chatbot</title>
-<style>
-
-  :root {
-    --bg: #fff7ee;
-    --surface: #fffdf9;
-    --surface-glass: rgba(255, 253, 249, .78);
-    --text: #3a2a1f;
-    --muted: #8a7564;
-    --border: #f0dfcc;
-    --accent: #ff7a59;
-    --accent-2: #ffb347;
-    --accent-grad: linear-gradient(135deg, #ff7a59 0%, #ffb347 100%);
-    --accent-ink: #d9532f;
-    --accent-text: #ffffff;
-    --focus-ring: rgba(255, 122, 89, .28);
-    --assistant-bg: #ffffff;
-    --error-bg: #ffe3dd;
-    --error-text: #a8321f;
-    --warn-bg: #ffecd6;
-    --warn-text: #8a4f0c;
-    --info-bg: #e5f1e2;
-    --info-text: #35643f;
-    --blob-peach: #ffd2a8;
-    --blob-coral: #ffb0a0;
-    --blob-sage: #cfe6c8;
-    --shadow: 0 6px 20px rgba(140, 80, 30, .12);
-    --shadow-sm: 0 2px 8px rgba(140, 80, 30, .1);
-    --radius: 20px;
-    color-scheme: light;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --bg: #1e1714;
-      --surface: #2a201b;
-      --surface-glass: rgba(42, 32, 27, .78);
-      --text: #f6ebe0;
-      --muted: #b9a696;
-      --border: #3f3128;
-      --accent: #ff8a6b;
-      --accent-2: #ffb35c;
-      --accent-grad: linear-gradient(135deg, #ff8a6b 0%, #ffb35c 100%);
-      --accent-ink: #ff9d82;
-      --accent-text: #2b1810;
-      --focus-ring: rgba(255, 138, 107, .35);
-      --assistant-bg: #35281f;
-      --error-bg: #4a2420;
-      --error-text: #ffb8ab;
-      --warn-bg: #45301a;
-      --warn-text: #ffd39e;
-      --info-bg: #27382a;
-      --info-text: #c1e4c6;
-      --blob-peach: #6b3f22;
-      --blob-coral: #7a3428;
-      --blob-sage: #2f4a33;
-      --shadow: 0 6px 22px rgba(0, 0, 0, .4);
-      --shadow-sm: 0 2px 8px rgba(0, 0, 0, .35);
-      color-scheme: dark;
-    }
-  }
-  :root[data-theme="dark"] {
-    --bg: #1e1714;
-    --surface: #2a201b;
-    --surface-glass: rgba(42, 32, 27, .78);
-    --text: #f6ebe0;
-    --muted: #b9a696;
-    --border: #3f3128;
-    --accent: #ff8a6b;
-    --accent-2: #ffb35c;
-    --accent-grad: linear-gradient(135deg, #ff8a6b 0%, #ffb35c 100%);
-    --accent-ink: #ff9d82;
-    --accent-text: #2b1810;
-    --focus-ring: rgba(255, 138, 107, .35);
-    --assistant-bg: #35281f;
-    --error-bg: #4a2420;
-    --error-text: #ffb8ab;
-    --warn-bg: #45301a;
-    --warn-text: #ffd39e;
-    --info-bg: #27382a;
-    --info-text: #c1e4c6;
-    --blob-peach: #6b3f22;
-    --blob-coral: #7a3428;
-    --blob-sage: #2f4a33;
-    --shadow: 0 6px 22px rgba(0, 0, 0, .4);
-    --shadow-sm: 0 2px 8px rgba(0, 0, 0, .35);
-    color-scheme: dark;
-  }
-
-  * { box-sizing: border-box; }
-  [hidden] { display: none !important; }
-  /* --app-height follows the visible area, so the iPhone keyboard never covers the composer. */
-  html, body { margin: 0; height: var(--app-height, 100%); overflow: hidden; overscroll-behavior: none; }
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font: 15px/1.5 var(--font, "Nunito"), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    -webkit-text-size-adjust: 100%;
-    -webkit-tap-highlight-color: transparent;
-  }
-
-  button, input, select, textarea { font: inherit; color: inherit; }
-  /* 16px or larger stops iPhone Safari from zooming in when a field is tapped. */
-  input, select, textarea { font-size: 16px; }
-  button {
-    border: 1px solid var(--border);
-    background: var(--surface);
-    border-radius: 999px;
-    padding: 7px 16px;
-    font-weight: 700;
-    cursor: pointer;
-    white-space: nowrap;
-    touch-action: manipulation;
-    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, filter .15s ease;
-  }
-  @media (pointer: coarse) {
-    button, select { min-height: 44px; }
-  }
-  button:hover:not(:disabled):not(.link) { border-color: var(--accent); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
-  button:active:not(:disabled):not(.link) { transform: scale(.96); box-shadow: none; }
-  button:disabled { opacity: .5; cursor: default; }
-  button.primary { background: var(--accent-grad); color: var(--accent-text); border-color: transparent; box-shadow: var(--shadow); }
-  button.primary:hover:not(:disabled) { filter: brightness(1.05); box-shadow: var(--shadow); }
-  button.link { background: none; border: none; padding: 0; color: var(--accent-ink); font-weight: 800; border-radius: 6px; }
-  button.link:hover { text-decoration: underline; }
-  a.button {
-    display: inline-flex;
-    align-items: center;
-    border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--text);
-    border-radius: 999px;
-    padding: 7px 16px;
-    font-weight: 700;
-    text-decoration: none;
-    white-space: nowrap;
-    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
-  }
-  a.button:hover { border-color: var(--accent); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
-  a.button:active { transform: scale(.96); }
-  @media (pointer: coarse) { a.button { min-height: 44px; } }
-  .fine-print { font-size: 12px; color: var(--muted); text-align: center; }
-  input, select, textarea {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 9px 12px;
-    transition: box-shadow .15s ease, border-color .15s ease;
-  }
-  input:focus, select:focus, textarea:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 4px var(--focus-ring);
-  }
-  button:focus-visible, a.button:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-  }
-
-  .theme-toggle {
-    width: 40px;
-    height: 40px;
-    padding: 0;
-    display: inline-grid;
-    place-items: center;
-    font-size: 18px;
-    line-height: 1;
-    flex: none;
-  }
-  @media (pointer: coarse) { .theme-toggle { width: 44px; height: 44px; } }
-
-  @keyframes bounce { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-10px); } 60% { transform: translateY(-4px); } }
-  @keyframes wobble { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-10deg); } 75% { transform: rotate(10deg); } }
-  @keyframes pop { from { opacity: 0; transform: scale(.9); } to { opacity: 1; transform: scale(1); } }
-  @keyframes dots {
-    0%, 60%, 100% { box-shadow: 0 0 var(--dot), 14px 0 var(--dot), 28px 0 var(--dot); }
-    15% { box-shadow: 0 -6px var(--dot), 14px 0 var(--dot), 28px 0 var(--dot); }
-    30% { box-shadow: 0 0 var(--dot), 14px -6px var(--dot), 28px 0 var(--dot); }
-    45% { box-shadow: 0 0 var(--dot), 14px 0 var(--dot), 28px -6px var(--dot); }
-  }
-
-  /* Loading */
-  #loading {
-    height: 100%;
-    display: grid;
-    place-items: center;
-    color: var(--muted);
-    padding: 16px;
-    text-align: center;
-  }
-
-  /* Login */
-  .login {
-    position: relative;
-    height: 100%;
-    overflow-x: hidden;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    padding:
-      max(16px, env(safe-area-inset-top, 0px))
-      max(16px, env(safe-area-inset-right, 0px))
-      max(16px, env(safe-area-inset-bottom, 0px))
-      max(16px, env(safe-area-inset-left, 0px));
-  }
-  /* Soft blurred blobs behind the card. */
-  .login::before, .login::after {
-    content: "";
-    position: fixed;
-    border-radius: 50%;
-    filter: blur(48px);
-    opacity: .85;
-    pointer-events: none;
-  }
-  .login::before {
-    width: 320px; height: 320px;
-    top: -90px; left: -80px;
-    background: radial-gradient(circle at 35% 35%, var(--blob-coral), var(--blob-peach) 70%);
-  }
-  .login::after {
-    width: 300px; height: 300px;
-    bottom: -90px; right: -70px;
-    background: radial-gradient(circle at 60% 40%, var(--blob-sage), var(--blob-peach) 80%);
-  }
-  .card {
-    position: relative;
-    z-index: 1;
-    margin: auto;
-    width: 100%;
-    max-width: 360px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 28px;
-    box-shadow: var(--shadow);
-    padding: 28px 24px 24px;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-  }
-  .card .theme-toggle { position: absolute; top: 12px; right: 12px; }
-  .mascot { font-size: 48px; line-height: 1; text-align: center; animation: bounce 1.8s ease-in-out infinite; }
-  .card h1 { margin: 0; font-size: 24px; font-weight: 800; text-align: center; }
-  .card p { margin: 0; }
-  #login-subtitle { text-align: center; }
-  .card label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 700; color: var(--muted); }
-  .card input { color: var(--text); font-weight: 400; }
-  .card .primary { padding: 11px; }
-  .muted { color: var(--muted); }
-  .message { font-size: 14px; border-radius: 14px; padding: 8px 12px; }
-  .message:empty { display: none; }
-  .message.error { background: var(--error-bg); color: var(--error-text); }
-  .message.info { background: var(--info-bg); color: var(--info-text); }
-  .toggle-row { font-size: 14px; text-align: center; }
-
-  /* Chat layout */
-  .chat { height: 100%; display: flex; flex-direction: column; }
-  header {
-    position: relative;
-    z-index: 2;
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    grid-template-areas: "brand controls account";
-    align-items: center;
-    gap: 8px 16px;
-    padding:
-      calc(10px + env(safe-area-inset-top, 0px))
-      max(16px, env(safe-area-inset-right, 0px))
-      10px
-      max(16px, env(safe-area-inset-left, 0px));
-    background: var(--surface-glass);
-    -webkit-backdrop-filter: blur(14px) saturate(1.3);
-    backdrop-filter: blur(14px) saturate(1.3);
-    border-bottom: 1px solid var(--border);
-  }
-  .brand { grid-area: brand; display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 17px; white-space: nowrap; }
-  .brand-badge {
-    display: inline-grid;
-    place-items: center;
-    width: 32px; height: 32px;
-    border-radius: 12px;
-    background: var(--accent-grad);
-    box-shadow: var(--shadow-sm);
-    font-size: 16px;
-  }
-  .brand-name {
-    background: var(--accent-grad);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    color: transparent;
-  }
-  .controls { grid-area: controls; display: flex; gap: 8px; min-width: 0; }
-  .controls select { flex: 1 1 auto; min-width: 0; max-width: 440px; }
-  #history-panel { position: absolute; z-index: 20; top: 0; bottom: 0; left: 0; width: min(340px, 90vw); background: var(--surface, var(--bg)); color: var(--text); border-right: 1px solid var(--border, rgba(128,128,128,.3)); box-shadow: 0 0 30px rgba(0,0,0,.25); display: flex; flex-direction: column; }
-  #history-panel[hidden] { display: none; }
-  .chat { position: relative; }
-  .history-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; }
-  #history-list { overflow-y: auto; padding: 0 10px 12px; display: flex; flex-direction: column; gap: 6px; }
-  #history-list button.item { text-align: left; display: flex; flex-direction: column; gap: 2px; width: 100%; }
-  #history-list button.item.current { outline: 2px solid var(--accent); }
-  #history-list .when { font-size: 12px; color: var(--muted); }
-  #history-list .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #font-select { max-width: 120px; min-width: 0; }
-  .account { grid-area: account; display: flex; align-items: center; gap: 10px; min-width: 0; }
-  #user-email {
-    color: var(--muted);
-    font-size: 13px;
-    max-width: 24ch;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  @media (max-width: 640px) {
-    header {
-      grid-template-columns: 1fr auto;
-      grid-template-areas: "brand account" "controls controls";
-    }
-    #user-email { display: none; }
-    header { column-gap: 8px; }
-    .account { gap: 6px; }
-    .account button:not(.theme-toggle), .account a.button { padding-left: 12px; padding-right: 12px; }
-  }
-
-  #messages {
-    flex: 1;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
-    padding: 20px max(16px, env(safe-area-inset-right, 0px)) 20px max(16px, env(safe-area-inset-left, 0px));
-  }
-  .thread { max-width: 780px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
-  .empty { text-align: center; color: var(--muted); margin-top: 12vh; }
-  .empty-emoji { font-size: 64px; line-height: 1.1; margin-bottom: 8px; display: inline-block; transform-origin: 70% 80%; animation: wobble 2.4s ease-in-out infinite; }
-  .empty strong { display: block; color: var(--text); font-size: 20px; font-weight: 800; margin-bottom: 4px; }
-
-  .msg { display: flex; flex-direction: column; max-width: 85%; animation: pop .28s ease-out both; }
-  .msg.user { align-self: flex-end; align-items: flex-end; transform-origin: 100% 100%; }
-  .msg.assistant {
-    align-self: flex-start;
-    display: grid;
-    grid-template-columns: auto 1fr;
-    column-gap: 8px;
-    align-items: start;
-    transform-origin: 0 100%;
-  }
-  .msg.assistant::before {
-    content: "🤖";
-    grid-column: 1;
-    grid-row: 1 / span 2;
-    display: grid;
-    place-items: center;
-    width: 32px; height: 32px;
-    border-radius: 50%;
-    background: var(--info-bg);
-    box-shadow: var(--shadow-sm);
-    font-size: 17px;
-    line-height: 1;
-  }
-  .msg.assistant > .bubble, .msg.assistant > .caption { grid-column: 2; }
-  .bubble {
-    padding: 10px 15px;
-    border-radius: var(--radius);
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    box-shadow: var(--shadow-sm);
-  }
-  .msg.user .bubble { background: var(--accent-grad); color: var(--accent-text); font-weight: 600; border-bottom-right-radius: 6px; }
-  .msg.assistant .bubble { background: var(--assistant-bg); border: 1px solid var(--border); border-top-left-radius: 6px; }
-  /* "Thinking…" stays in the DOM for screen readers; sighted users see bouncing dots. */
-  .bubble.thinking { --dot: var(--accent); font-size: 0; line-height: 0; color: transparent; padding: 18px 18px 14px; }
-  .bubble.thinking::after {
-    content: "";
-    display: block;
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    margin: 0 36px 0 0;
-    animation: dots 1.2s ease-in-out infinite;
-    box-shadow: 0 0 var(--dot), 14px 0 var(--dot), 28px 0 var(--dot);
-  }
-  /* Rendered markdown in assistant replies. */
-  .bubble.md { white-space: normal; }
-  .bubble.md > :first-child { margin-top: 0; }
-  .bubble.md > :last-child { margin-bottom: 0; }
-  .bubble.md p { margin: 0 0 .6em; }
-  .bubble.md h3, .bubble.md h4, .bubble.md h5, .bubble.md h6 { margin: .9em 0 .35em; line-height: 1.3; font-weight: 800; }
-  .bubble.md h3 { font-size: 1.2em; }
-  .bubble.md h4 { font-size: 1.1em; }
-  .bubble.md h5, .bubble.md h6 { font-size: 1em; }
-  .bubble.md ul, .bubble.md ol { margin: .3em 0 .6em; padding-left: 1.4em; }
-  .bubble.md li { margin: .2em 0; }
-  .bubble.md li > ul, .bubble.md li > ol { margin: .2em 0; }
-  .bubble.md a { color: var(--accent-ink); font-weight: 700; }
-  .bubble.md code { font: .9em ui-monospace, "SF Mono", Consolas, monospace; background: var(--bg); padding: 1px 6px; border-radius: 6px; }
-  .bubble.md pre { margin: .5em 0 .7em; padding: 10px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 14px; overflow-x: auto; white-space: pre; }
-  .bubble.md pre code { padding: 0; background: none; font-size: .88em; }
-  .bubble.md blockquote { margin: .5em 0 .7em; padding: 2px 0 2px 12px; border-left: 4px solid var(--accent); color: var(--muted); }
-  .bubble.md hr { border: none; border-top: 1px solid var(--border); margin: .9em 0; }
-  .bubble.md table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin: .5em 0 .7em; }
-  .bubble.md th, .bubble.md td { border: 1px solid var(--border); padding: 5px 10px; text-align: left; }
-  .bubble.md th { background: var(--bg); font-weight: 800; }
-  .caption { font-size: 12px; color: var(--muted); margin-top: 3px; padding: 0 6px; }
-
-  .note {
-    align-self: center;
-    font-size: 14px;
-    font-weight: 600;
-    padding: 8px 16px;
-    border-radius: 999px;
-    max-width: 100%;
-    text-align: center;
-    box-shadow: var(--shadow-sm);
-    animation: pop .28s ease-out both;
-  }
-  .note.error { background: var(--error-bg); color: var(--error-text); }
-  .note.error::before { content: "😵 "; }
-  .note.warn { background: var(--warn-bg); color: var(--warn-text); }
-  .note.warn::before { content: "🌤️ "; }
-
-  /* Floating pill composer */
-  #composer {
-    display: flex;
-    gap: 6px;
-    align-items: flex-end;
-    width: min(780px, calc(100% - max(16px, env(safe-area-inset-left, 0px)) - max(16px, env(safe-area-inset-right, 0px))));
-    margin: 4px auto calc(14px + env(safe-area-inset-bottom, 0px));
-    padding: 5px 5px 5px 8px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 28px;
-    box-shadow: var(--shadow);
-    transition: box-shadow .15s ease, border-color .15s ease;
-  }
-  #composer:focus-within { border-color: var(--accent); box-shadow: var(--shadow), 0 0 0 4px var(--focus-ring); }
-  /* While the on-screen keyboard is up, the home-indicator gap isn't needed. */
-  :root.kb #composer { margin-bottom: 10px; }
-  #input {
-    flex: 1;
-    resize: none;
-    min-height: 44px;
-    max-height: 200px;
-    padding: 10px 8px;
-    border: none;
-    border-radius: 18px;
-    background: transparent;
-    box-shadow: none;
-    line-height: 1.4;
-  }
-  #input:focus { box-shadow: none; }
-  #send { flex: none; width: 44px; height: 44px; min-height: 44px; padding: 0; border-radius: 50%; font-size: 17px; line-height: 1; }
-
-  @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after { animation: none !important; transition: none !important; }
-  }
-</style>
 </head>
 <body>
 
-<div id="loading">Loading…</div>
+<div id="loading" data-i18n="loading">Loading…</div>
 
 <div id="login-view" class="login" hidden>
   <form id="login-form" class="card" novalidate>
+    <button id="lang-toggle-login" class="lang-toggle" type="button" data-i18n-title="switch_language" data-i18n-aria="switch_language"></button>
     <button id="theme-toggle-login" class="theme-toggle" type="button"></button>
     <div class="mascot" aria-hidden="true">👋</div>
     <h1>Free Chatbot</h1>
-    <p id="login-subtitle" class="muted">Log in to start chatting.</p>
-    <label>Email
+    <p id="login-subtitle" class="muted"></p>
+    <label><span data-i18n="email">Email</span>
       <input id="email" type="email" autocomplete="email" required>
     </label>
-    <label>Password
+    <label><span data-i18n="password">Password</span>
       <input id="password" type="password" autocomplete="current-password" minlength="6" required>
     </label>
-    <button id="login-submit" type="submit" class="primary">Log in</button>
+    <button id="login-submit" type="submit" class="primary"></button>
     <p id="login-message" class="message" role="status"></p>
     <p class="toggle-row">
-      <span id="toggle-text" class="muted">No account yet?</span>
-      <button id="mode-toggle" type="button" class="link">Create an account</button>
+      <span id="toggle-text" class="muted"></span>
+      <button id="mode-toggle" type="button" class="link"></button>
     </p>
-    <p class="fine-print">Chats are saved to your account, and the admin can read them.</p>
+    <p class="fine-print" data-i18n="login_fine_print">Chats are saved to your account, and the admin can read them.</p>
   </form>
 </div>
 
-<div id="chat-view" class="chat" hidden>
-  <header>
-    <div class="brand"><span class="brand-badge" aria-hidden="true">💬</span><span class="brand-name">Free Chatbot</span></div>
-    <div class="controls">
-      <select id="model" aria-label="Model"></select>
-      <button id="retry-models" type="button" hidden>Retry</button>
-      <button id="history-btn" type="button">Historik</button>
-      <button id="new-chat" type="button">New chat</button>
+<div id="chat-view" class="app" hidden>
+  <div id="backdrop" class="backdrop" hidden></div>
+
+  <aside id="sidebar" class="sidebar" aria-label="Sidebar" data-i18n-aria="sidebar">
+    <div class="sb-top">
+      <div class="brand"><span class="brand-badge" aria-hidden="true">💬</span><span class="brand-name">Free Chatbot</span></div>
+      <button id="sb-collapse" class="icon-btn plain" type="button" data-i18n-aria="close_sidebar" data-i18n-title="close_sidebar">«</button>
     </div>
-    <div class="account">
-      <a id="admin-link" class="button" href="admin.html" hidden>Admin</a>
-      <span id="user-email"></span>
-      <select id="font-select" aria-label="Skrifttype" title="Skrifttype"></select>
-      <button id="theme-toggle" class="theme-toggle" type="button"></button>
-      <button id="logout" type="button">Log out</button>
+    <button id="new-chat" class="primary new-chat" type="button" data-i18n="new_chat">＋ New chat</button>
+    <div class="search">
+      <input id="search" type="search" autocomplete="off" data-i18n-placeholder="search_ph" data-i18n-aria="search">
     </div>
-  </header>
-  <aside id="history-panel" hidden>
-    <div class="history-head"><strong>Chat historik</strong><button id="history-close" type="button" aria-label="Luk">✕</button></div>
-    <div id="history-list"></div>
+    <div class="tabs" role="tablist">
+      <button id="tab-btn-chats" type="button" role="tab" aria-controls="tab-chats" aria-selected="true" data-i18n="tab_chats">💬 Chats</button>
+      <button id="tab-btn-skills" type="button" role="tab" aria-controls="tab-skills" aria-selected="false" tabindex="-1" data-i18n="tab_skills">🎭 Skills</button>
+      <button id="tab-btn-tools" type="button" role="tab" aria-controls="tab-tools" aria-selected="false" tabindex="-1" data-i18n="tab_tools">🧰 Tools</button>
+    </div>
+    <div class="sb-body">
+      <div id="tab-chats" role="tabpanel" aria-labelledby="tab-btn-chats"><div id="chat-list"></div></div>
+      <div id="tab-skills" role="tabpanel" aria-labelledby="tab-btn-skills" hidden></div>
+      <div id="tab-tools" role="tabpanel" aria-labelledby="tab-btn-tools" hidden></div>
+    </div>
+    <div class="sb-foot">
+      <div class="who"><span aria-hidden="true">👤</span><span id="user-email"></span></div>
+      <div class="foot-row">
+        <button id="open-settings" type="button" data-i18n="settings_btn">⚙ Settings</button>
+        <button id="theme-toggle" class="theme-toggle" type="button"></button>
+        <span class="grow"></span>
+        <a id="admin-link" class="button" href="admin.html" hidden data-i18n="admin">Admin</a>
+        <button id="logout" type="button" data-i18n="logout">Log out</button>
+      </div>
+    </div>
   </aside>
-  <div id="messages" role="log" aria-live="polite">
-    <div id="thread" class="thread"></div>
+
+  <div class="main">
+    <header class="topbar">
+      <button id="sb-open" class="icon-btn" type="button" aria-controls="sidebar" aria-expanded="false" data-i18n-aria="open_sidebar" data-i18n-title="open_sidebar">☰</button>
+      <div class="title-wrap">
+        <h1 id="chat-title" tabindex="0"></h1>
+        <span id="skill-chip" hidden></span>
+      </div>
+      <div class="model-wrap">
+        <select id="model" data-i18n-aria="model"></select>
+        <button id="retry-models" type="button" hidden data-i18n="retry">Retry</button>
+      </div>
+    </header>
+    <div id="messages" role="log" aria-live="polite">
+      <div id="thread" class="thread"></div>
+    </div>
+    <div id="composer-area">
+      <div id="composer-chips" class="composer-chips" hidden></div>
+      <form id="composer">
+        <textarea id="input" rows="1" maxlength="8000" data-i18n-placeholder="message_ph" data-i18n-aria="message"></textarea>
+        <button id="mic" type="button" class="tool-toggle" aria-pressed="false" data-i18n-aria="voice" data-i18n-title="voice">🎤</button>
+        <button id="web-toggle" type="button" class="tool-toggle" aria-pressed="false" hidden>🌐</button>
+        <button id="send" type="submit" class="primary" aria-label="Send" data-i18n-aria="send">➤</button>
+      </form>
+      <div id="char-count" aria-live="polite"></div>
+    </div>
   </div>
-  <form id="composer">
-    <textarea id="input" rows="1" placeholder="Message…" aria-label="Message"></textarea>
-    <button id="send" type="submit" class="primary" aria-label="Send">➤</button>
-  </form>
 </div>
+
+<dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title">
+  <div class="dlg-head">
+    <h2 id="settings-title" data-i18n="settings">Settings</h2>
+    <span id="saved-ind" class="saved-ind" role="status"></span>
+    <button id="settings-close" class="icon-btn" type="button" data-i18n-aria="close" data-i18n-title="close">✕</button>
+  </div>
+  <div class="set-wrap">
+    <nav id="set-nav" class="set-nav" aria-label="Settings"></nav>
+    <div id="set-body" class="set-body"></div>
+  </div>
+</dialog>
+
+<dialog id="skill-dialog" aria-labelledby="skill-title">
+  <form id="skill-form" novalidate>
+    <div class="dlg-head">
+      <h2 id="skill-title"></h2>
+      <button id="skill-close" class="icon-btn" type="button" data-i18n-aria="close" data-i18n-title="close">✕</button>
+    </div>
+    <div class="dlg-body">
+      <div class="field-row">
+        <label class="field narrow"><span data-i18n="skill_emoji">Emoji</span>
+          <input name="emoji" maxlength="12" autocomplete="off">
+        </label>
+        <label class="field"><span data-i18n="skill_name">Name</span>
+          <input name="name" maxlength="60" required autocomplete="off">
+        </label>
+      </div>
+      <label class="field"><span data-i18n="skill_desc">Short description</span>
+        <input name="description" maxlength="200" autocomplete="off">
+      </label>
+      <label class="field"><span data-i18n="skill_instructions">Instructions</span>
+        <textarea name="instructions" maxlength="4000" rows="7" data-i18n-placeholder="skill_instructions_ph"></textarea>
+        <span id="skill-count" class="counter"></span>
+        <span class="hint" data-i18n="skill_instructions_hint">The AI follows these in every message of the chat. You don't see them in the conversation.</span>
+      </label>
+      <label class="field"><span data-i18n="skill_model">Preferred model</span>
+        <select name="model"></select>
+      </label>
+      <div class="field"><span data-i18n="skill_tools">Default tools</span>
+        <div id="skill-tools"></div>
+      </div>
+    </div>
+    <div class="dlg-foot">
+      <button id="skill-cancel" type="button" data-i18n="cancel">Cancel</button>
+      <button id="skill-save" type="submit" class="primary" data-i18n="save">Save</button>
+    </div>
+  </form>
+</dialog>
+<input id="skill-file" type="file" accept=".json,application/json" hidden>
+<div id="print-area" aria-hidden="true"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script>
-const SUPABASE_URL = 'https://qkqwvhtwcmkbjtmelkfi.supabase.co';
-// Publishable key: safe to ship in the page. The OpenRouter key lives only in the Edge Function.
-const SUPABASE_KEY = 'sb_publishable_uf9SDtY2gHE-0RS1dUATKw_ed2LMSDT';
-const CHAT_URL = SUPABASE_URL + '/functions/v1/chat';
-const MODELS_URL = 'https://openrouter.ai/api/v1/models';
-const MODEL_STORAGE_KEY = 'chat_model';
-// "auto" lets the server pick a free model (and switch if one is busy).
-const AUTO = 'auto';
-const AUTO_LABEL_FREE = 'Auto · picks a free model for you';
-const AUTO_LABEL_ASSIGNED = 'Auto · picks a model for you';
-const THEME_STORAGE_KEY = 'chat_theme';
-// Classifiers that can't chat; never offered.
-const NOT_CHAT = /(safety|guard|moderation)/i;
-// On a website (not a double-clicked file) email links can come straight back to this page.
-const HOSTED = location.protocol === 'https:' || location.protocol === 'http:';
-// Phones: Return adds a new line and the Send button sends.
-const IS_TOUCH = window.matchMedia?.('(pointer: coarse)').matches ?? false;
-
-const $ = (id) => document.getElementById(id);
-
-let messages = [];        // conversation sent to the model: [{ role, content }]
-let sessionId = null;     // current conversation id in chat_messages
-let currentUserId = null;
-let controller = null;    // AbortController while a reply is streaming
-let autoModel = null;     // model Auto used last, so a conversation keeps the same model
-let assignedModels = [];  // extra models the admin gave this user, on top of every free model
-let signUpMode = false;
-
-// ---------- small helpers ----------
-
-function loadSetting(key) {
-  try { return localStorage.getItem(key); } catch { return null; }
-}
-function saveSetting(key, value) {
-  try { localStorage.setItem(key, value); } catch {}
-}
-
-function newId() {
-  if (window.crypto?.randomUUID) return crypto.randomUUID();
-  const b = crypto.getRandomValues(new Uint8Array(16));
-  b[6] = (b[6] & 0x0f) | 0x40;
-  b[8] = (b[8] & 0x3f) | 0x80;
-  const h = [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
-  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
-}
-
-// ---------- theme (Auto follows the device; Light and Dark override it) ----------
-
-const THEMES = [
-  { id: 'auto', icon: '🌗', label: 'Auto' },
-  { id: 'light', icon: '☀️', label: 'Light' },
-  { id: 'dark', icon: '🌙', label: 'Dark' },
-];
-let themeIndex = Math.max(0, THEMES.findIndex((t) => t.id === loadSetting(THEME_STORAGE_KEY)));
-
-function showTheme() {
-  const current = THEMES[themeIndex];
-  const next = THEMES[(themeIndex + 1) % THEMES.length];
-  window.applyTheme(current.id);
-  for (const btn of document.querySelectorAll('.theme-toggle')) {
-    const text = `Theme: ${current.label}. Tap to switch to ${next.label}.`;
-    btn.textContent = current.icon;
-    btn.title = text;
-    btn.setAttribute('aria-label', text);
-  }
-}
-for (const btn of document.querySelectorAll('.theme-toggle')) {
-  btn.addEventListener('click', () => {
-    themeIndex = (themeIndex + 1) % THEMES.length;
-    saveSetting(THEME_STORAGE_KEY, THEMES[themeIndex].id);
-    showTheme();
-  });
-}
-showTheme();
-
-// ---------- font ----------
-
-const FONT_STORAGE_KEY = 'chat_font';
-const FONTS = [
-  { id: 'nunito', label: 'Nunito', css: '"Nunito"' },
-  { id: 'inter', label: 'Inter', css: '"Inter"' },
-  { id: 'lora', label: 'Lora (serif)', css: '"Lora", Georgia, serif' },
-  { id: 'atkinson', label: 'Atkinson (letlæselig)', css: '"Atkinson Hyperlegible"' },
-  { id: 'comic', label: 'Comic Neue', css: '"Comic Neue", "Comic Sans MS"' },
-  { id: 'mono', label: 'Roboto Mono', css: '"Roboto Mono", ui-monospace, Consolas, monospace' },
-  { id: 'system', label: 'System', css: 'system-ui' },
-];
-const fontSelect = $('font-select');
-for (const f of FONTS) fontSelect.add(new Option(f.label, f.id));
-function showFont(id) {
-  const f = FONTS.find((x) => x.id === id) || FONTS[0];
-  document.documentElement.style.setProperty('--font', f.css);
-  fontSelect.value = f.id;
-}
-fontSelect.addEventListener('change', () => {
-  saveSetting(FONT_STORAGE_KEY, fontSelect.value);
-  showFont(fontSelect.value);
-});
-showFont(loadSetting(FONT_STORAGE_KEY));
-
-class ChatError extends Error {
-  constructor(status, message) {
-    super(message);
-    this.status = status;
-  }
-}
-
-// ---------- startup ----------
-
-// iPhone: size the app to the visible area so the keyboard never hides the header or composer.
-function fitViewport() {
-  const vv = window.visualViewport;
-  const root = document.documentElement;
-  const stick = isNearBottom();
-  root.style.setProperty('--app-height', (vv ? vv.height : window.innerHeight) + 'px');
-  root.classList.toggle('kb', !!vv && window.innerHeight - vv.height > 120);
-  if (vv) window.scrollTo(0, 0);
-  if (stick) scrollToBottom();
-}
-window.visualViewport?.addEventListener('resize', fitViewport);
-window.addEventListener('resize', fitViewport);
-fitViewport();
-
-// A confirmation link that failed (e.g. expired) comes back with the reason in the URL.
-const linkError = new URLSearchParams(location.hash.slice(1)).get('error_description');
-if (linkError) {
-  setLoginMessage(linkError + ' Log in, or sign up again for a new link.', 'error');
-  history.replaceState(null, '', location.pathname);
-}
-
-if (!window.supabase) {
-  $('loading').textContent = "Couldn't load Supabase. Check your internet connection and reload the page.";
-  throw new Error('supabase-js failed to load');
-}
-
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-// Fires once on load (INITIAL_SESSION) and on every login, logout and token refresh.
-// Supabase calls must not be awaited inside this callback, so defer the work.
-sb.auth.onAuthStateChange((_event, session) => {
-  setTimeout(() => showFor(session), 0);
-});
-
-loadModels();
-
-async function showFor(session) {
-  $('loading').hidden = true;
-  const user = session?.user ?? null;
-
-  if (!user) {
-    // Supabase can repeat "signed out" events; don't wipe a half-typed password.
-    if (currentUserId === null && !$('login-view').hidden) return;
-    currentUserId = null;
-    sessionId = null;
-    controller?.abort();
-    clearChat();
-    $('chat-view').hidden = true;
-    $('login-view').hidden = false;
-    $('password').value = '';
-    $('email').focus();
-    return;
-  }
-
-  if (user.id === currentUserId) return;  // token refresh, nothing to redraw
-  currentUserId = user.id;
-  $('login-view').hidden = true;
-  $('chat-view').hidden = false;
-  $('user-email').textContent = user.email ?? '';
-  $('user-email').title = user.email ?? '';
-  $('admin-link').hidden = true;
-  // Ask the server for the current user record: the admin flag can be newer than the saved session.
-  sb.auth.getUser().then(({ data }) => {
-    $('admin-link').hidden = data.user?.app_metadata?.is_admin !== true;
-  });
-  sb.from('user_models').select('model').then(({ data }) => {
-    assignedModels = (data ?? []).map((r) => r.model);
-    loadModels();
-  });
-  await loadHistory();
-  $('input').focus();
-}
-
-// ---------- login ----------
-
-function setMode(signUp) {
-  signUpMode = signUp;
-  $('login-submit').textContent = signUp ? 'Sign up' : 'Log in';
-  $('login-subtitle').textContent = signUp ? 'Create an account to start chatting.' : 'Log in to start chatting.';
-  $('toggle-text').textContent = signUp ? 'Already have an account?' : 'No account yet?';
-  $('mode-toggle').textContent = signUp ? 'Log in' : 'Create an account';
-  $('password').autocomplete = signUp ? 'new-password' : 'current-password';
-  $('login-submit').disabled = false;
-  setLoginMessage('');
-}
-
-// The admin can close sign-ups; say so before someone makes an account that can't chat.
-async function checkSignupsOpen() {
-  const { data } = await sb.from('app_settings').select('signups_closed_at').maybeSingle();
-  if (signUpMode && data?.signups_closed_at) {
-    setLoginMessage("Sign-ups are closed right now. New accounts can't chat until the admin opens them again.", 'error');
-    $('login-submit').disabled = true;
-  }
-}
-
-function setLoginMessage(text, kind = 'info') {
-  const el = $('login-message');
-  el.textContent = text;
-  el.className = 'message ' + kind;
-}
-
-function friendlyAuthError(err) {
-  const code = err?.code ?? '';
-  const msg = err?.message ?? String(err);
-  if (code === 'invalid_credentials' || /invalid login credentials/i.test(msg)) return 'Wrong email or password.';
-  if (code === 'email_not_confirmed' || /not confirmed/i.test(msg)) return 'Please confirm your email first. Check your inbox for the link.';
-  if (code === 'user_already_exists' || /already registered/i.test(msg)) return 'That email already has an account. Log in instead.';
-  if (code === 'signup_disabled' || /signups not allowed/i.test(msg)) return 'New sign-ups are turned off.';
-  if (err?.status === 429 || /rate limit|too many/i.test(msg)) return 'Too many attempts. Please wait a few minutes and try again.';
-  return msg;
-}
-
-$('mode-toggle').addEventListener('click', () => {
-  setMode(!signUpMode);
-  if (signUpMode) checkSignupsOpen();
-});
-
-$('login-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const email = $('email').value.trim();
-  const password = $('password').value;
-  if (!email || !password) return setLoginMessage('Enter your email and password.', 'error');
-  if (signUpMode && password.length < 6) return setLoginMessage('Password must be at least 6 characters.', 'error');
-
-  setLoginMessage('');
-  $('login-submit').disabled = true;
-  try {
-    if (signUpMode) {
-      const { data, error } = await sb.auth.signUp({
-        email,
-        password,
-        options: HOSTED ? { emailRedirectTo: location.origin + location.pathname } : undefined,
-      });
-      if (error) throw error;
-      if (!data.session) {
-        setMode(false);
-        setLoginMessage(HOSTED
-          ? 'Check your email and tap the confirmation link. It opens this page and logs you in.'
-          : 'Check your email and click the confirmation link. It may open a page that fails to load; that is fine. Then come back here and log in.');
-      }
-    } else {
-      const { error } = await sb.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-    }
-  } catch (err) {
-    setLoginMessage(friendlyAuthError(err), 'error');
-  } finally {
-    $('login-submit').disabled = false;
-  }
-});
-
-$('logout').addEventListener('click', () => sb.auth.signOut());
-
-// ---------- free models ----------
-
-// Everyone gets the free models. Models the admin assigned (paid ones too) come on top.
-function filterModels(list, assigned) {
-  const isChat = (m) => {
-    const out = m.architecture?.output_modalities;
-    return !Array.isArray(out) || out.includes('text');
-  };
-  return (list ?? [])
-    .filter((m) => typeof m?.id === 'string' && isChat(m))
-    .filter((m) => assigned.includes(m.id) || (m.id.endsWith(':free') && !NOT_CHAT.test(m.id)))
-    .sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
-}
-
-function formatContext(n) {
-  if (!n) return '? ctx';
-  return n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M ctx` : `${Math.round(n / 1000)}K ctx`;
-}
-
-// Auto is always available (the server keeps its own list); specific models are added once loaded.
-async function loadModels() {
-  const select = $('model');
-  const wanted = select.value || loadSetting(MODEL_STORAGE_KEY) || AUTO;
-  select.replaceChildren(new Option(assignedModels.length ? AUTO_LABEL_ASSIGNED : AUTO_LABEL_FREE, AUTO));
-  $('retry-models').hidden = true;
-
-  try {
-    const res = await fetch(MODELS_URL);
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const models = filterModels((await res.json()).data, assignedModels);
-    select.append(...models.map((m) => new Option(`${m.name || m.id} · ${formatContext(m.context_length)}${m.id.endsWith(':free') ? '' : ' · paid'}`, m.id)));
-  } catch {
-    $('retry-models').hidden = false;  // Auto still works; Retry loads the specific models
-  }
-  select.value = [...select.options].some((o) => o.value === wanted) ? wanted : AUTO;
-  updateSendState();
-}
-
-$('model').addEventListener('change', (e) => saveSetting(MODEL_STORAGE_KEY, e.target.value));
-$('retry-models').addEventListener('click', loadModels);
-
-// ---------- chat rendering ----------
-
-function clearChat() {
-  messages = [];
-  const empty = document.createElement('div');
-  empty.className = 'empty';
-  empty.innerHTML = '<div class="empty-emoji" aria-hidden="true">✨</div><strong>Hi there! What shall we chat about?</strong>Free models are used by default, so chatting doesn\'t cost anything.';
-  $('thread').replaceChildren(empty);
-}
-
-function isNearBottom() {
-  const el = $('messages');
-  return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-}
-
-function scrollToBottom() {
-  const el = $('messages');
-  el.scrollTop = el.scrollHeight;
-}
-
-// ---------- markdown for assistant replies ----------
-// Small and safe: all text is HTML-escaped first; only http(s) links are allowed.
-
-function escapeHtml(s) {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function inlineMarkdown(text) {
-  const codes = [];
-  let s = text.replace(/`([^`\n]+)`/g, (_, c) => { codes.push(c); return '\u0000' + (codes.length - 1) + '\u0000'; });
-  s = escapeHtml(s);
-  s = s.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
-  s = s.replace(/\*\*([^\n]+?)\*\*/g, '<strong>$1</strong>');
-  s = s.replace(/(^|[^*\w])\*([^*\s][^*\n]*?)\*(?!\w)/g, '$1<em>$2</em>');
-  s = s.replace(/~~([^~\n]+?)~~/g, '<del>$1</del>');
-  return s.replace(/\u0000(\d+)\u0000/g, (_, i) => '<code>' + escapeHtml(codes[i]) + '</code>');
-}
-
-const LIST_ITEM = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
-const TABLE_RULE = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
-const isBlockStart = (l) => /^\s*(```|#{1,6}\s|>|(-{3,}|\*{3,}|_{3,})\s*$)/.test(l) || LIST_ITEM.test(l);
-const tableCells = (l) => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
-
-function renderList(items) {
-  let pos = 0;
-  const build = (base) => {
-    const tag = items[pos].ordered ? 'ol' : 'ul';
-    const start = tag === 'ol' && items[pos].num !== 1 ? ` start="${items[pos].num}"` : '';
-    let out = `<${tag}${start}>`;
-    while (pos < items.length && items[pos].indent >= base) {
-      const item = items[pos++];
-      let li = inlineMarkdown(item.text);
-      if (pos < items.length && items[pos].indent > item.indent) li += build(items[pos].indent);
-      out += `<li>${li}</li>`;
-    }
-    return out + `</${tag}>`;
-  };
-  let html = '';
-  while (pos < items.length) html += build(items[pos].indent);
-  return html;
-}
-
-function renderMarkdown(src) {
-  const lines = src.replace(/\r\n?/g, '\n').split('\n');
-  let html = '';
-  let i = 0;
-  while (i < lines.length) {
-    const line = lines[i];
-    if (!line.trim()) { i++; continue; }
-    let m;
-
-    if (/^\s*```/.test(line)) {
-      const code = [];
-      i++;
-      while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) code.push(lines[i++]);
-      i++;
-      html += '<pre><code>' + escapeHtml(code.join('\n')) + '</code></pre>';
-    } else if ((m = line.match(/^(#{1,6})\s+(.*?)\s*#*\s*$/))) {
-      const tag = 'h' + Math.min(m[1].length + 2, 6);
-      html += `<${tag}>${inlineMarkdown(m[2])}</${tag}>`;
-      i++;
-    } else if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
-      html += '<hr>';
-      i++;
-    } else if (/^\s*>/.test(line)) {
-      const quote = [];
-      while (i < lines.length && /^\s*>/.test(lines[i])) quote.push(lines[i++].replace(/^\s*>\s?/, ''));
-      html += '<blockquote>' + renderMarkdown(quote.join('\n')) + '</blockquote>';
-    } else if (LIST_ITEM.test(line)) {
-      const items = [];
-      while (i < lines.length) {
-        const im = lines[i].match(LIST_ITEM);
-        if (im) {
-          items.push({ indent: im[1].replace(/\t/g, '    ').length, ordered: /\d/.test(im[2]), num: parseInt(im[2], 10), text: im[3] });
-          i++;
-        } else if (!lines[i].trim()) {
-          let j = i + 1;
-          while (j < lines.length && !lines[j].trim()) j++;
-          if (j < lines.length && LIST_ITEM.test(lines[j])) i = j; else break;
-        } else if (/^\s+\S/.test(lines[i]) && !isBlockStart(lines[i])) {
-          items[items.length - 1].text += ' ' + lines[i++].trim();
-        } else break;
-      }
-      html += renderList(items);
-    } else if (line.includes('|') && i + 1 < lines.length && TABLE_RULE.test(lines[i + 1])) {
-      const head = tableCells(line);
-      i += 2;
-      let rows = '';
-      while (i < lines.length && lines[i].trim() && lines[i].includes('|')) {
-        rows += '<tr>' + tableCells(lines[i++]).map((c) => `<td>${inlineMarkdown(c)}</td>`).join('') + '</tr>';
-      }
-      html += '<table><thead><tr>' + head.map((c) => `<th>${inlineMarkdown(c)}</th>`).join('') + '</tr></thead><tbody>' + rows + '</tbody></table>';
-    } else {
-      const para = [line];
-      i++;
-      while (i < lines.length && lines[i].trim() && !isBlockStart(lines[i])) para.push(lines[i++]);
-      html += '<p>' + para.map((l) => inlineMarkdown(l.trim())).join('<br>') + '</p>';
-    }
-  }
-  return html;
-}
-
-function renderInto(bubble, text) {
-  bubble.classList.add('md');
-  bubble.innerHTML = renderMarkdown(text);
-}
-
-function addBubble(role, text, model) {
-  $('thread').querySelector('.empty')?.remove();
-  const row = document.createElement('div');
-  row.className = 'msg ' + role;
-  const bubble = document.createElement('div');
-  bubble.className = 'bubble';
-  bubble.textContent = text;
-  row.appendChild(bubble);
-  if (model) setCaption(row, model);
-  $('thread').appendChild(row);
-  return { row, bubble };
-}
-
-function setCaption(row, text) {
-  let cap = row.querySelector('.caption');
-  if (!cap) {
-    cap = document.createElement('div');
-    cap.className = 'caption';
-    row.appendChild(cap);
-  }
-  cap.textContent = text;
-}
-
-function showNote(text, kind = 'error') {
-  $('thread').querySelector('.empty')?.remove();
-  const note = document.createElement('div');
-  note.className = 'note ' + kind;
-  note.textContent = text;
-  $('thread').appendChild(note);
-  scrollToBottom();
-}
-
-// ---------- history (Supabase, protected by row-level security) ----------
-
-async function openSession(sid) {
-  clearChat();
-  sessionId = sid;
-  const { data: rows, error } = await sb
-    .from('chat_messages')
-    .select('role, content, model')
-    .eq('session_id', sid)
-    .order('id');
-  if (error) return showNote("Couldn't load that chat.", 'warn');
-  for (const r of rows) {
-    messages.push({ role: r.role, content: r.content });
-    const { bubble } = addBubble(r.role, r.content, r.model);
-    if (r.role === 'assistant') renderInto(bubble, r.content);
-  }
-  autoModel = rows.filter((r) => r.role === 'assistant' && r.model).at(-1)?.model ?? null;
-  scrollToBottom();
-}
-
-async function loadHistory() {
-  clearChat();
-  sessionId = newId();
-  const { data: latest, error } = await sb
-    .from('chat_messages')
-    .select('session_id')
-    .order('id', { ascending: false })
-    .limit(1);
-  if (error) return showNote("Couldn't load your previous chat.", 'warn');
-  if (!latest.length) return;
-  await openSession(latest[0].session_id);
-}
-
-// ---------- history panel ----------
-
-async function showHistoryList() {
-  const list = $('history-list');
-  list.textContent = 'Henter…';
-  const { data, error } = await sb
-    .from('chat_messages')
-    .select('session_id, content, created_at')
-    .eq('role', 'user')
-    .order('id', { ascending: false })
-    .limit(500);
-  if (error) { list.textContent = 'Kunne ikke hente historik.'; return; }
-  const sessions = new Map();   // newest first; the oldest user message per session becomes its title
-  for (const r of data) {
-    const s = sessions.get(r.session_id);
-    if (!s) sessions.set(r.session_id, { last: r.created_at, title: r.content });
-    else s.title = r.content;
-  }
-  list.replaceChildren();
-  if (!sessions.size) { list.textContent = 'Ingen tidligere chats endnu.'; return; }
-  for (const [sid, s] of sessions) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'item' + (sid === sessionId ? ' current' : '');
-    const t = document.createElement('span');
-    t.className = 'title';
-    t.textContent = s.title;
-    const w = document.createElement('span');
-    w.className = 'when';
-    w.textContent = new Date(s.last).toLocaleString('da-DK', { dateStyle: 'medium', timeStyle: 'short' });
-    b.append(t, w);
-    b.addEventListener('click', async () => {
-      controller?.abort();
-      $('history-panel').hidden = true;
-      await openSession(sid);
-    });
-    list.appendChild(b);
-  }
-}
-$('history-btn').addEventListener('click', () => {
-  const panel = $('history-panel');
-  panel.hidden = !panel.hidden;
-  if (!panel.hidden) showHistoryList();
-});
-$('history-close').addEventListener('click', () => { $('history-panel').hidden = true; });
-
-async function saveTurn(sid, userText, reply, model) {
-  const { error } = await sb.from('chat_messages').insert([
-    { session_id: sid, role: 'user', content: userText },
-    { session_id: sid, role: 'assistant', content: reply, model },
-  ]);
-  if (error && sid === sessionId) showNote("Couldn't save this message.", 'warn');
-}
-
-$('new-chat').addEventListener('click', () => {
-  controller?.abort();
-  clearChat();
-  sessionId = newId();
-  $('history-panel').hidden = true;
-  $('input').focus();
-});
-
-// ---------- sending and streaming ----------
-
-async function readErrorMessage(res) {
-  try {
-    const body = await res.json();
-    return body?.error?.message || body?.message || body?.msg || res.statusText;
-  } catch {
-    return res.statusText || `Request failed (${res.status}).`;
-  }
-}
-
-function friendlyChatError(err) {
-  if (err instanceof ChatError) {
-    if (err.status === 401) return 'Your session expired. Please log out and log in again.';
-    if (err.status === 429) {
-      if (/per-day|per day/i.test(err.message)) return "Today's free message limit is used up. It's shared by everyone using this chatbot and resets at midnight UTC.";
-      if (/per-min/i.test(err.message)) return 'Too many messages in the last minute. Wait a moment and try again.';
-      return 'The free models are busy right now. Wait a moment and try again.';
-    }
-    if (err.status === 402) return 'The OpenRouter account behind this app has a negative balance, so even free models are blocked right now.';
-    return err.message || `Request failed (${err.status}).`;
-  }
-  return "Couldn't reach the server. Check your internet connection.";
-}
-
-function setStreaming(on) {
-  $('send').textContent = on ? '■' : '➤';
-  $('send').setAttribute('aria-label', on ? 'Stop' : 'Send');
-  updateSendState();
-}
-
-function updateSendState() {
-  $('send').disabled = !controller && !$('model').value;
-}
-
-async function send(text) {
-  const model = $('model').value;
-  if (!text || !model || controller) return;
-
-  const sid = sessionId;
-  messages.push({ role: 'user', content: text });
-  const userRow = addBubble('user', text).row;
-  const { row, bubble } = addBubble('assistant', 'Thinking…');
-  bubble.classList.add('thinking');
-  scrollToBottom();
-
-  controller = new AbortController();
-  setStreaming(true);
-
-  let reply = '';
-  let usedModel = model;
-  let errorText = null;
-  let aborted = false;
-
-  try {
-    const { data: { session } } = await sb.auth.getSession();
-    if (!session) throw new ChatError(401, 'Not logged in.');
-
-    const res = await fetch(CHAT_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer ' + session.access_token,
-        apikey: SUPABASE_KEY,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ model, prefer: model === AUTO ? autoModel : undefined, messages }),
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new ChatError(res.status, await readErrorMessage(res));
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    read: while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-
-      let newline;
-      while ((newline = buffer.indexOf('\n')) !== -1) {
-        const line = buffer.slice(0, newline).trim();
-        buffer = buffer.slice(newline + 1);
-        if (!line.startsWith('data:')) continue;  // blank lines and ": OPENROUTER PROCESSING" comments
-
-        const payload = line.slice(5).trim();
-        if (payload === '[DONE]') {
-          reader.cancel().catch(() => {});
-          break read;
-        }
-
-        let chunk;
-        try { chunk = JSON.parse(payload); } catch { continue; }
-        if (chunk.error) throw new ChatError(chunk.error.code, chunk.error.message);
-        if (chunk.model) usedModel = chunk.model;
-
-        const delta = chunk.choices?.[0]?.delta?.content;
-        if (delta) {
-          const stick = isNearBottom();
-          if (!reply) bubble.classList.remove('thinking');
-          reply += delta;
-          renderInto(bubble, reply);
-          if (stick) scrollToBottom();
-        }
-      }
-    }
-  } catch (err) {
-    if (err?.name === 'AbortError') aborted = true;
-    else errorText = friendlyChatError(err);
-  } finally {
-    controller = null;
-    setStreaming(false);
-  }
-
-  // "New chat" or logout happened while streaming: keep the old chat's record, leave the screen alone.
-  if (sid !== sessionId) {
-    if (reply && currentUserId) saveTurn(sid, text, reply, usedModel);
-    return;
-  }
-
-  if (reply) {
-    messages.push({ role: 'assistant', content: reply });
-    if (model === AUTO) autoModel = usedModel;
-    bubble.classList.remove('thinking');
-    setCaption(row, (model === AUTO ? 'Auto · ' : '') + usedModel + (aborted ? ' · stopped' : ''));
-    if (errorText) showNote(errorText);
-    saveTurn(sid, text, reply, usedModel);
-  } else {
-    // Nothing arrived: undo the turn and give the text back so it can be resent.
-    messages.pop();
-    row.remove();
-    userRow.remove();
-    if (!messages.length) clearChat();
-    if (!aborted) showNote(errorText ?? 'The model sent an empty reply. Try again or pick another model.');
-    $('input').value = text;
-    autosize();
-  }
-  $('input').focus();
-}
-
-// ---------- composer ----------
-
-function autosize() {
-  const el = $('input');
-  el.style.height = 'auto';
-  el.style.height = Math.min(el.scrollHeight + 2, 200) + 'px';
-}
-
-$('input').addEventListener('input', autosize);
-
-$('input').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !IS_TOUCH) {
-    e.preventDefault();
-    $('composer').requestSubmit();
-  }
-});
-
-$('composer').addEventListener('submit', (e) => {
-  e.preventDefault();
-  if (controller) {
-    controller.abort();
-    return;
-  }
-  const text = $('input').value.trim();
-  if (!text || !$('model').value) return;
-  $('input').value = '';
-  autosize();
-  send(text);
-});
-
-clearChat();
-</script>
+<script defer src="js/util.js"></script>
+<script defer src="js/i18n.js"></script>
+<script defer src="js/markdown.js"></script>
+<script defer src="js/store.js"></script>
+<script defer src="js/settings.js"></script>
+<script defer src="js/skills.js"></script>
+<script defer src="js/sidebar.js"></script>
+<script defer src="js/app.js"></script>
 </body>
 </html>

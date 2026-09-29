@@ -212,6 +212,11 @@
   .chip-x { border: none; background: none; color: inherit; padding: 0 6px; min-height: 0; font-size: 16px; line-height: 1; }
   .add-model { display: inline-flex; gap: 6px; flex: 1 1 260px; min-width: 0; }
   .add-model input { flex: 1; min-width: 0; font: inherit; font-size: 16px; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
+  .features { gap: 8px 10px; }
+  .features .limit { width: 84px; font: inherit; font-size: 16px; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
+  .switch-label { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; }
+  .switch-label input { width: 18px; height: 18px; accent-color: var(--accent); }
+  .badges { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 6px; vertical-align: middle; }
   .sessions { display: flex; flex-direction: column; gap: 8px; }
   .session {
     display: flex;
@@ -234,6 +239,8 @@
   .msg.user .bubble { background: var(--accent); color: var(--accent-text); border-bottom-right-radius: 4px; }
   .msg.assistant .bubble { background: var(--assistant-bg); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
   .caption { font-size: 12px; color: var(--muted); margin-top: 3px; padding: 0 4px; }
+  .msg.hidden-msg .bubble { opacity: .6; border-style: dashed; }
+  .notice { padding: 8px 12px; border-radius: 10px; background: var(--warn-bg); color: var(--warn-text); font-size: 14px; margin: 0 0 12px; }
   .error-text { color: var(--error-text); }
 
   .toast {
@@ -279,6 +286,7 @@
         <div class="stat"><span class="label">Users</span><span id="stat-users" class="value">–</span></div>
         <div class="stat"><span class="label">Messages today</span><span id="stat-messages" class="value">–</span><span class="sub">Since 00:00 UTC</span></div>
         <div class="stat"><span class="label">Active today</span><span id="stat-active" class="value">–</span><span class="sub">Users who chatted</span></div>
+        <div class="stat"><span class="label">Web searches today</span><span id="stat-web" class="value">–</span><span class="sub">Cost money; see limits below</span></div>
       </div>
 
       <div class="panel signups">
@@ -340,7 +348,7 @@ function el(tag, props = {}, ...children) {
     else if (key.startsWith('on')) node.addEventListener(key.slice(2), value);
     else node.setAttribute(key, value === true ? '' : value);
   }
-  node.append(...children);
+  node.append(...children.filter((c) => c !== null && c !== undefined && c !== false));
   return node;
 }
 
@@ -435,6 +443,7 @@ function renderOverview(o) {
   $('stat-users').textContent = o.users;
   $('stat-messages').textContent = o.messagesToday;
   $('stat-active').textContent = o.activeToday;
+  $('stat-web').textContent = o.webSearchesToday ?? 0;
 
   const closed = Boolean(o.signupsClosedAt);
   $('signup-pill').textContent = closed ? 'Closed' : 'Open';
@@ -491,6 +500,7 @@ function userRow(u) {
     el('p', { class: 'meta', text: meta }),
     actions,
     modelsBox(u),
+    featuresBox(u),
   );
 }
 
@@ -509,6 +519,53 @@ function modelsBox(u) {
     el('span', { class: 'small muted', text: u.models.length ? 'Models: all free models, plus' : 'Models: all free models' }),
     ...chips,
     el('span', { class: 'add-model' }, input, add),
+  );
+}
+
+// Web search costs money (OpenRouter charges per search, even with free models), so the admin switches it on
+// per user and sets how many searches they get a day.
+function featuresBox(u) {
+  const w = u.webSearch;
+  const limit = el('input', {
+    type: 'number', class: 'limit', min: '0', max: '1000', step: '1', value: String(w.dailyLimit),
+    'aria-label': `Daily web search limit for ${u.email}`,
+  });
+  const toggle = el('input', { type: 'checkbox', checked: w.enabled, 'aria-label': `Web search for ${u.email}` });
+  const save = el('button', { type: 'button', text: 'Save limit', hidden: !w.enabled });
+  const grant = async (control) => {
+    control.disabled = true;
+    try {
+      await api('grant_feature', { userId: u.id, feature: 'web_search', dailyLimit: Number(limit.value) });
+      toast(`Web search on for ${u.email} (${Number(limit.value)} a day).`, 'ok');
+      await loadDashboard();
+    } catch (err) {
+      toast(err.message, 'error');
+      control.disabled = false;
+      if (control === toggle) toggle.checked = false;
+    }
+  };
+  toggle.addEventListener('change', async () => {
+    if (toggle.checked) return grant(toggle);
+    toggle.disabled = true;
+    try {
+      await api('revoke_feature', { userId: u.id, feature: 'web_search' });
+      toast(`Web search off for ${u.email}.`, 'ok');
+      await loadDashboard();
+    } catch (err) {
+      toast(err.message, 'error');
+      toggle.checked = true;
+      toggle.disabled = false;
+    }
+  });
+  save.addEventListener('click', () => grant(save));
+  return el('div', { class: 'models features' },
+    el('label', { class: 'switch-label' }, toggle, '🌐 Web search'),
+    w.enabled
+      ? el('span', { class: 'small muted', text: `used today: ${w.usedToday} / ${w.dailyLimit}` })
+      : el('span', { class: 'small muted', text: 'off' }),
+    el('span', { class: 'small muted', text: 'Limit per day:' }),
+    limit,
+    save,
   );
 }
 
@@ -616,28 +673,50 @@ async function openUser(u) {
     }
     $('sessions').replaceChildren(...sessions.map((s) =>
       el('button', { type: 'button', class: 'session', onclick: () => openTranscript(u, s) },
-        el('span', { class: 'session-when', text: `${fmt(s.lastAt)} · ${s.messages} messages` }),
-        el('span', { class: 'session-preview', text: s.preview || '(no text)' }),
+        el('span', { class: 'session-when' },
+          `${fmt(s.lastAt)} · ${s.messages} messages`,
+          sessionBadges(s)),
+        el('span', { class: 'session-preview', text: s.title || s.preview || '(no text)' }),
       )));
   } catch (err) {
     $('sessions').replaceChildren(el('p', { class: 'error-text', text: err.message }));
   }
 }
 
+function sessionBadges(s) {
+  const badges = [];
+  if (s.deletedAt) badges.push(el('span', { class: 'pill error', text: 'deleted by user' }));
+  if (s.hidden) badges.push(el('span', { class: 'pill warn', text: `${s.hidden} hidden` }));
+  if (s.up) badges.push(el('span', { class: 'pill ok', text: `👍 ${s.up}` }));
+  if (s.down) badges.push(el('span', { class: 'pill info', text: `👎 ${s.down}` }));
+  return badges.length ? el('span', { class: 'badges' }, ...badges) : null;
+}
+
 async function openTranscript(u, s) {
   $('sessions').hidden = true;
   $('transcript').hidden = false;
-  $('transcript-title').textContent = `Chat started ${fmt(s.startedAt)}`;
+  $('transcript-title').textContent = (s.title ? s.title + ' · ' : '') + `started ${fmt(s.startedAt)}`;
   $('transcript-body').replaceChildren(el('p', { class: 'muted', text: 'Loading…' }));
   window.scrollTo(0, 0);
 
   try {
-    const { messages } = await api('transcript', { userId: u.id, sessionId: s.sessionId });
-    $('transcript-body').replaceChildren(...messages.map((m) =>
-      el('div', { class: 'msg ' + m.role },
+    const { messages, session } = await api('transcript', { userId: u.id, sessionId: s.sessionId });
+    const notice = session?.deleted_at
+      ? [el('p', { class: 'notice', text: `The user deleted this chat on ${fmt(session.deleted_at)}. It is hidden for them, but you can still read it.` })]
+      : [];
+    $('transcript-body').replaceChildren(...notice, ...messages.map((m) => {
+      const caption = [
+        m.role === 'assistant' && m.model ? m.model : null,
+        fmt(m.created_at),
+        m.feedback === 1 ? '👍' : m.feedback === -1 ? '👎' : null,
+        m.meta?.tools?.length ? 'tools: ' + m.meta.tools.map((t) => t.name).join(', ') : null,
+        m.hidden_at ? `hidden by user ${fmt(m.hidden_at)}` : null,
+      ].filter(Boolean).join(' · ');
+      return el('div', { class: 'msg ' + m.role + (m.hidden_at ? ' hidden-msg' : '') },
         el('div', { class: 'bubble', text: m.content }),
-        el('div', { class: 'caption', text: m.role === 'assistant' && m.model ? `${m.model} · ${fmt(m.created_at)}` : fmt(m.created_at) }),
-      )));
+        el('div', { class: 'caption', text: caption }),
+      );
+    }));
   } catch (err) {
     $('transcript-body').replaceChildren(el('p', { class: 'error-text', text: err.message }));
   }
