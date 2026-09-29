@@ -406,7 +406,7 @@ async function start(session) {
   $('gate').hidden = true;
   $('app').hidden = false;
   showDashboard();
-  loadFreeModelList();
+  loadModelSuggestions();
   await loadDashboard();
 }
 
@@ -494,7 +494,7 @@ function userRow(u) {
   );
 }
 
-// Assigned models. None = the user can use every free model; otherwise only these.
+// Assigned models, free or paid. None = the user can use every free model; otherwise only these.
 function modelsBox(u) {
   const chips = u.models.map((m) =>
     el('span', { class: 'chip' },
@@ -502,7 +502,7 @@ function modelsBox(u) {
       el('button', { type: 'button', class: 'chip-x', 'aria-label': `Remove ${m}`, text: '×',
         onclick: (e) => changeModel(e.currentTarget, 'remove_model', u, m) }),
     ));
-  const input = el('input', { type: 'text', list: 'free-models', placeholder: 'model-id:free', 'aria-label': `Add a model for ${u.email}` });
+  const input = el('input', { type: 'text', list: 'free-models', placeholder: 'any model id, paid too', 'aria-label': `Add a model for ${u.email}` });
   const add = el('button', { type: 'button', text: 'Add model', onclick: (e) => changeModel(e.currentTarget, 'add_model', u, input.value.trim()) });
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') add.click(); });
   return el('div', { class: 'models' },
@@ -526,11 +526,15 @@ async function changeModel(btn, action, u, model) {
 }
 
 // Suggestions for the "add model" boxes.
-async function loadFreeModelList() {
+async function loadModelSuggestions() {
   try {
     const { data } = await fetch('https://openrouter.ai/api/v1/models').then((r) => r.json());
-    const ids = data.map((m) => m.id).filter((id) => id.endsWith(':free')).sort();
-    $('free-models').replaceChildren(...ids.map((id) => el('option', { value: id })));
+    const models = data.filter((m) => typeof m?.id === 'string').sort((a, b) => a.id.localeCompare(b.id));
+    $('free-models').replaceChildren(...models.map((m) => {
+      const perM = Number(m.pricing?.prompt) * 1e6;
+      const label = m.id.endsWith(':free') || perM === 0 ? 'free' : `paid · $${+perM.toFixed(2)}/M in`;
+      return el('option', { value: m.id, label });
+    }));
   } catch {
     // suggestions are optional
   }

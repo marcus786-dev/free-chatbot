@@ -306,7 +306,7 @@ const MODELS_URL = 'https://openrouter.ai/api/v1/models';
 const MODEL_STORAGE_KEY = 'chat_model';
 // "auto" lets the server pick a free model (and switch if one is busy).
 const AUTO = 'auto';
-const AUTO_LABEL = 'Auto · picks a free model for you';
+const AUTO_LABEL = 'Auto · picks a model for you';
 // Classifiers that can't chat; never offered.
 const NOT_CHAT = /(safety|guard|moderation)/i;
 // On a website (not a double-clicked file) email links can come straight back to this page.
@@ -506,13 +506,15 @@ $('logout').addEventListener('click', () => sb.auth.signOut());
 
 // ---------- free models ----------
 
-function filterFreeModels(list) {
+// Everyone gets the free models. Models the admin assigned (paid ones too) replace that list.
+function filterModels(list, assigned) {
+  const isChat = (m) => {
+    const out = m.architecture?.output_modalities;
+    return !Array.isArray(out) || out.includes('text');
+  };
   return (list ?? [])
-    .filter((m) => typeof m?.id === 'string' && m.id.endsWith(':free') && !NOT_CHAT.test(m.id))
-    .filter((m) => {
-      const out = m.architecture?.output_modalities;
-      return !Array.isArray(out) || out.includes('text');
-    })
+    .filter((m) => typeof m?.id === 'string' && isChat(m))
+    .filter((m) => assigned.length ? assigned.includes(m.id) : m.id.endsWith(':free') && !NOT_CHAT.test(m.id))
     .sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
 }
 
@@ -531,9 +533,8 @@ async function loadModels() {
   try {
     const res = await fetch(MODELS_URL);
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    let free = filterFreeModels((await res.json()).data);
-    if (assignedModels.length) free = free.filter((m) => assignedModels.includes(m.id));
-    select.append(...free.map((m) => new Option(`${m.name || m.id} · ${formatContext(m.context_length)}`, m.id)));
+    const models = filterModels((await res.json()).data, assignedModels);
+    select.append(...models.map((m) => new Option(`${m.name || m.id} · ${formatContext(m.context_length)}${m.id.endsWith(':free') ? '' : ' · paid'}`, m.id)));
   } catch {
     $('retry-models').hidden = false;  // Auto still works; Retry loads the specific models
   }
@@ -550,7 +551,7 @@ function clearChat() {
   messages = [];
   const empty = document.createElement('div');
   empty.className = 'empty';
-  empty.innerHTML = '<strong>What can I help with?</strong>Only free models are used, so chatting never costs anything.';
+  empty.innerHTML = '<strong>What can I help with?</strong>Free models are used by default, so chatting doesn't cost anything.';
   $('thread').replaceChildren(empty);
 }
 
