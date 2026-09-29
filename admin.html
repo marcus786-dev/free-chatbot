@@ -494,7 +494,7 @@ function userRow(u) {
   );
 }
 
-// Assigned models, free or paid. None = the user can use every free model; otherwise only these.
+// Extra models, paid ones too. Every user can always use all free models on top of these.
 function modelsBox(u) {
   const chips = u.models.map((m) =>
     el('span', { class: 'chip' },
@@ -506,7 +506,7 @@ function modelsBox(u) {
   const add = el('button', { type: 'button', text: 'Add model', onclick: (e) => changeModel(e.currentTarget, 'add_model', u, input.value.trim()) });
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') add.click(); });
   return el('div', { class: 'models' },
-    el('span', { class: 'small muted', text: u.models.length ? 'Models:' : 'Models: all free models' }),
+    el('span', { class: 'small muted', text: u.models.length ? 'Models: all free models, plus' : 'Models: all free models' }),
     ...chips,
     el('span', { class: 'add-model' }, input, add),
   );

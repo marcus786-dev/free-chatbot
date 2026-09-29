@@ -306,7 +306,7 @@ const MODELS_URL = 'https://openrouter.ai/api/v1/models';
 const MODEL_STORAGE_KEY = 'chat_model';
 // "auto" lets the server pick a free model (and switch if one is busy).
 const AUTO = 'auto';
-const AUTO_LABEL = 'Auto · picks a model for you';
+const AUTO_LABEL = 'Auto · picks a free model for you';
 // Classifiers that can't chat; never offered.
 const NOT_CHAT = /(safety|guard|moderation)/i;
 // On a website (not a double-clicked file) email links can come straight back to this page.
@@ -321,7 +321,7 @@ let sessionId = null;     // current conversation id in chat_messages
 let currentUserId = null;
 let controller = null;    // AbortController while a reply is streaming
 let autoModel = null;     // model Auto used last, so a conversation keeps the same model
-let assignedModels = [];  // models the admin gave this user; empty = every free model
+let assignedModels = [];  // extra models the admin gave this user, on top of every free model
 let signUpMode = false;
 
 // ---------- small helpers ----------
@@ -506,7 +506,7 @@ $('logout').addEventListener('click', () => sb.auth.signOut());
 
 // ---------- free models ----------
 
-// Everyone gets the free models. Models the admin assigned (paid ones too) replace that list.
+// Everyone gets the free models. Models the admin assigned (paid ones too) come on top.
 function filterModels(list, assigned) {
   const isChat = (m) => {
     const out = m.architecture?.output_modalities;
@@ -514,7 +514,7 @@ function filterModels(list, assigned) {
   };
   return (list ?? [])
     .filter((m) => typeof m?.id === 'string' && isChat(m))
-    .filter((m) => assigned.length ? assigned.includes(m.id) : m.id.endsWith(':free') && !NOT_CHAT.test(m.id))
+    .filter((m) => assigned.includes(m.id) || (m.id.endsWith(':free') && !NOT_CHAT.test(m.id)))
     .sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
 }
 
