@@ -5,9 +5,11 @@ import { createClient, type SupabaseClient, type User } from "npm:@supabase/supa
 // The OpenRouter key lives in the OPENROUTER_API_KEY secret and never reaches the browser.
 // Every user can use the models whose id ends in ":free". The admin can also assign extra models
 // to a user (user_models), paid ones included; those come on top of the free ones.
-// model "auto" tries the user's assigned models first, then free models, and moves on to the next
-// candidate when one is busy or down. Assigning a paid model to a user is the admin's choice to let
-// Auto bill the account for that user; users with no assigned models only ever get free models.
+// model "auto" judges how hard the latest message is. Easy ones (short chit-chat, quick facts, simple
+// sums) go to a free model first; hard ones (code, long or multi-part questions, analysis) go to the
+// user's assigned models first. Either way it falls back to the other group when a model is busy or
+// down. Assigning a paid model to a user is the admin's choice to let Auto bill the account for that
+// user's hard questions; users with no assigned models only ever get free models.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -26,6 +28,18 @@ const NOT_CHAT = /(safety|guard|moderation)/i;
 const CODING_ONLY = /(code|coder)/i;
 const MIN_AUTO_SIZE_B = 8;
 const ACCOUNT_LIMIT = /free-models-per|per[- ]day/i;
+
+// Signals that a message needs a stronger model. Any one hard word, code, or a long message is enough.
+const HARD_WORDS = new RegExp(
+  "\\b(debug|refactor|optimi[sz]e|algorithm|architecture|prove|proof|derive|analy[sz]e|analysis|compare|contrast|" +
+    "essay|step[- ]by[- ]step|in detail|detailed|implement|trade-?offs?|regex|sql|integral|equation|theorem|" +
+    "write (?:a|an|the|me a) (?:function|program|script|story|essay|report|class|component)|" +
+    "explain why|forklar|analyser|sammenlign|detaljeret|skriv en)\\b",
+  "i",
+);
+const CODE_HINT = /```|\bfunction\s*\w*\s*\(|\bclass\s+\w+\s*[:({]|=>|\bdef\s+\w+\(|#include|\bSELECT\b[\s\S]*\bFROM\b|<\/?[a-z][^>]*>|[{};]\s*$/im;
+const LONG_MESSAGE = 400;
+const LONG_CONTEXT = 6_000;
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 type Attempt =
@@ -98,6 +112,21 @@ function shuffle<T>(items: T[]): T[] {
     [out[i], out[j]] = [out[j], out[i]];
   }
   return out;
+}
+
+// Cheap, deterministic difficulty guess from the latest message (no extra model call, no latency).
+function difficulty(messages: ChatMessage[]): "easy" | "hard" {
+  const text = messages[messages.length - 1].content.trim();
+  const earlier = messages.slice(0, -1).reduce((n, m) => n + m.content.length, 0);
+  let score = 0;
+  if (text.length > LONG_MESSAGE) score += 2;
+  else if (text.length > LONG_MESSAGE / 2) score += 1;
+  if (CODE_HINT.test(text)) score += 2;
+  if (HARD_WORDS.test(text)) score += 2;
+  if ((text.match(/\?/g) ?? []).length > 1) score += 1;
+  if (text.split("\n").length > 6) score += 1;
+  if (earlier > LONG_CONTEXT) score += 1;
+  return score >= 2 ? "hard" : "easy";
 }
 
 let modelCache: { ids: string[]; at: number } | null = null;
@@ -251,7 +280,7 @@ Deno.serve(async (req) => {
 
   let candidates = [model];
   if (model === AUTO) {
-    // Models the admin assigned to this user come first, then the shared free pool.
+    // Models the admin assigned to this user, plus the shared free pool; difficulty decides which goes first.
     const { data: assignedRows, error: assignedError } = await db
       .from("user_models")
       .select("model")
@@ -267,13 +296,20 @@ Deno.serve(async (req) => {
     }
     if (!pool.length && !assigned.length) return errorResponse(503, "OpenRouter lists no free chat models right now.");
 
-    const first = typeof prefer === "string" && (assigned.includes(prefer) || pool.includes(prefer)) ? [prefer] : [];
-    candidates = [...new Set([...first, ...shuffle(assigned), ...shuffle(pool)])].slice(0, assigned.length + AUTO_MAX_ATTEMPTS);
+    // Keep the model used earlier in the conversation first within its own group.
+    const pinned = (list: string[]) =>
+      typeof prefer === "string" && list.includes(prefer) ? [prefer, ...list.filter((id) => id !== prefer)] : list;
+    const mine = pinned(shuffle(assigned));
+    const free = pinned(shuffle(pool)).slice(0, AUTO_MAX_ATTEMPTS);
+    const hard = difficulty(messages) === "hard";
+    candidates = [...new Set(hard ? [...mine, ...free] : [...free, ...mine])];
   }
 
   const trimmed = trimToFit(messages);
   let failure = { status: 502, message: "No model answered." };
-  for (const candidate of candidates) {
+  const queue = [...candidates];
+  while (queue.length) {
+    const candidate = queue.shift()!;
     const attempt = await tryModel(apiKey, candidate, trimmed, req.signal);
     if (attempt.ok) {
       return new Response(attempt.stream, {
@@ -282,7 +318,11 @@ Deno.serve(async (req) => {
     }
     failure = attempt;
     if (req.signal.aborted) break;
-    if (attempt.status === 401 || attempt.status === 402 || ACCOUNT_LIMIT.test(attempt.message)) break;
+    if (attempt.status === 401 || attempt.status === 402) break;
+    if (ACCOUNT_LIMIT.test(attempt.message)) {
+      // The shared free quota is used up: skip the remaining free models, but assigned ones may still work.
+      for (let i = queue.length - 1; i >= 0; i--) if (queue[i].endsWith(":free")) queue.splice(i, 1);
+    }
   }
 
   if (failure.status === 401) {
