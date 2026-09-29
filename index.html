@@ -22,7 +22,7 @@ window.applyTheme = function (t) {
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Inter:wght@400;600;700;800&family=Lora:wght@400;600;700&family=Atkinson+Hyperlegible:wght@400;700&family=Comic+Neue:wght@400;700&family=Roboto+Mono:wght@400;600;700&display=swap">
 <!-- iPhone "Add to Home Screen": opens full screen like an app -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -126,7 +126,7 @@ window.applyTheme = function (t) {
   body {
     background: var(--bg);
     color: var(--text);
-    font: 15px/1.5 "Nunito", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font: 15px/1.5 var(--font, "Nunito"), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     -webkit-text-size-adjust: 100%;
     -webkit-tap-highlight-color: transparent;
   }
@@ -323,6 +323,7 @@ window.applyTheme = function (t) {
   }
   .controls { grid-area: controls; display: flex; gap: 8px; min-width: 0; }
   .controls select { flex: 1 1 auto; min-width: 0; max-width: 440px; }
+  #font-select { max-width: 120px; min-width: 0; }
   .account { grid-area: account; display: flex; align-items: center; gap: 10px; min-width: 0; }
   #user-email {
     color: var(--muted);
@@ -512,6 +513,7 @@ window.applyTheme = function (t) {
     <div class="account">
       <a id="admin-link" class="button" href="admin.html" hidden>Admin</a>
       <span id="user-email"></span>
+      <select id="font-select" aria-label="Skrifttype" title="Skrifttype"></select>
       <button id="theme-toggle" class="theme-toggle" type="button"></button>
       <button id="logout" type="button">Log out</button>
     </div>
@@ -601,6 +603,31 @@ for (const btn of document.querySelectorAll('.theme-toggle')) {
   });
 }
 showTheme();
+
+// ---------- font ----------
+
+const FONT_STORAGE_KEY = 'chat_font';
+const FONTS = [
+  { id: 'nunito', label: 'Nunito', css: '"Nunito"' },
+  { id: 'inter', label: 'Inter', css: '"Inter"' },
+  { id: 'lora', label: 'Lora (serif)', css: '"Lora", Georgia, serif' },
+  { id: 'atkinson', label: 'Atkinson (letlæselig)', css: '"Atkinson Hyperlegible"' },
+  { id: 'comic', label: 'Comic Neue', css: '"Comic Neue", "Comic Sans MS"' },
+  { id: 'mono', label: 'Roboto Mono', css: '"Roboto Mono", ui-monospace, Consolas, monospace' },
+  { id: 'system', label: 'System', css: 'system-ui' },
+];
+const fontSelect = $('font-select');
+for (const f of FONTS) fontSelect.add(new Option(f.label, f.id));
+function showFont(id) {
+  const f = FONTS.find((x) => x.id === id) || FONTS[0];
+  document.documentElement.style.setProperty('--font', f.css);
+  fontSelect.value = f.id;
+}
+fontSelect.addEventListener('change', () => {
+  saveSetting(FONT_STORAGE_KEY, fontSelect.value);
+  showFont(fontSelect.value);
+});
+showFont(loadSetting(FONT_STORAGE_KEY));
 
 class ChatError extends Error {
   constructor(status, message) {
