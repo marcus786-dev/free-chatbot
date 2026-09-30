@@ -728,6 +728,8 @@ mark { background: var(--warn-bg); color: var(--warn-text); border-radius: 4px; 
 #char-count { text-align: right; font-size: 12px; color: var(--muted); padding: 2px 14px 0; min-height: 0; }
 #char-count:empty { display: none; }
 #char-count.over { color: var(--error-text); font-weight: 700; }
+.chat-footer { text-align: center; font-size: 12px; padding: 2px 14px 6px; }
+.chat-footer a { color: var(--muted); }
 .toast-note { position: fixed; left: 50%; bottom: calc(90px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 70; background: var(--text); color: var(--bg); padding: 8px 16px; border-radius: 999px; font-size: 14px; font-weight: 700; box-shadow: var(--shadow); animation: pop .2s ease-out both; }
 
 /* ---------- Accent colours (Peach is the default, defined in :root) ---------- */
