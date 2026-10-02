@@ -18,6 +18,7 @@ let currentUserId = null;
 let controller = null;    // AbortController while a reply is streaming
 let autoModel = null;     // model Auto used last, so a conversation keeps the same model
 let assignedModels = [];  // extra models the admin gave this user, on top of every free model
+let removedFreeModels = [];   // free models the admin took away from this user
 let toolModels = new Set();   // model ids that support tool calling
 let webGrant = null;      // { daily_limit } when the admin allowed web search for this user
 let webOn = false;        // the 🌐 button for the next message
@@ -84,6 +85,7 @@ async function showFor(session) {
     webOn = false;
     currentSkillId = null;
     assignedModels = [];
+    removedFreeModels = [];
     clearPersonalSettings();
     clearChat();
     closeMenu();
@@ -108,8 +110,9 @@ async function showFor(session) {
   });
 
   await loadAccountSettings();
-  Store.assignedModels().then((rows) => {
-    assignedModels = (rows ?? []).map((r) => r.model);
+  Promise.all([Store.assignedModels(), Store.removedFreeModels().catch(() => [])]).then(([assigned, removed]) => {
+    assignedModels = (assigned ?? []).map((r) => r.model);
+    removedFreeModels = (removed ?? []).map((r) => r.model);
     loadModels();
   }).catch(() => {});
   Store.features().then((rows) => {
@@ -208,15 +211,15 @@ $('logout').addEventListener('click', () => sb.auth.signOut());
 
 // ---------- free models ----------
 
-// Everyone gets the free models. Models the admin assigned (paid ones too) come on top.
-function filterModels(list, assigned) {
+// Everyone gets the free models, except any the admin removed. Models the admin assigned (paid ones too) come on top.
+function filterModels(list, assigned, removed = []) {
   const isChat = (m) => {
     const out = m.architecture?.output_modalities;
     return !Array.isArray(out) || out.includes('text');
   };
   return (list ?? [])
     .filter((m) => typeof m?.id === 'string' && isChat(m))
-    .filter((m) => assigned.includes(m.id) || (m.id.endsWith(':free') && !NOT_CHAT.test(m.id)))
+    .filter((m) => assigned.includes(m.id) || (m.id.endsWith(':free') && !NOT_CHAT.test(m.id) && !removed.includes(m.id)))
     .sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
 }
 
@@ -241,7 +244,7 @@ async function loadModels() {
   try {
     const res = await fetch(MODELS_URL);
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    const models = filterModels((await res.json()).data, assignedModels);
+    const models = filterModels((await res.json()).data, assignedModels, removedFreeModels);
     toolModels = new Set(models.filter((m) => m.supported_parameters?.includes('tools')).map((m) => m.id));
     select.append(...models.map((m) => new Option(
       `${toolModels.has(m.id) ? '🛠 ' : ''}${m.name || m.id} · ${formatContext(m.context_length)}${m.id.endsWith(':free') ? '' : ' · paid'}`, m.id)));
