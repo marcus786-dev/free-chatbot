@@ -526,10 +526,15 @@ function modelsBox(u) {
   const freeInput = el('input', { type: 'text', list: 'free-only-models', placeholder: 'free model id to remove', 'aria-label': `Remove a free model from ${u.email}` });
   const take = el('button', { type: 'button', text: 'Remove free model', onclick: (e) => changeModel(e.currentTarget, 'remove_free_model', u, freeInput.value.trim()) });
   freeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') take.click(); });
-  const base = removed.length ? 'Models: free models except' : 'Models: all free models';
+  const base = u.freeModelsOff ? 'Free models: all removed' : removed.length ? 'Models: free models except' : 'Models: all free models';
+  const everything = u.freeModelsOff
+    ? el('button', { type: 'button', text: 'Give free models back', onclick: (e) => changeModel(e.currentTarget, 'restore_all_models', u, true) })
+    : el('button', { type: 'button', class: 'danger', text: 'Remove all models',
+        onclick: (e) => changeModel(e.currentTarget, 'remove_all_models', u, true) });
   return el('div', { class: 'models' },
     el('span', { class: 'small muted', text: base }),
-    ...removedChips,
+    everything,
+    ...(u.freeModelsOff ? [] : removedChips),
     el('span', { class: 'add-model' }, freeInput, take),
     el('span', { class: 'small muted', text: u.models.length ? 'Plus extra models:' : 'Extra models:' }),
     ...chips,
@@ -594,6 +599,8 @@ async function changeModel(btn, action, u, model) {
       remove_model: `Removed ${model} from ${u.email}.`,
       remove_free_model: `Removed free model ${model} from ${u.email}.`,
       restore_free_model: `Gave ${model} back to ${u.email}.`,
+      remove_all_models: `Removed every model from ${u.email}.`,
+      restore_all_models: `Gave the free models back to ${u.email}.`,
     };
     toast(done[action], 'ok');
     await loadDashboard();

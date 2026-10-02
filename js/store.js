@@ -114,6 +114,9 @@ const Store = {
   removedFreeModels() {
     return sb.from('user_blocked_models').select('model').then(unwrap);
   },
+  freeModelsOff() {
+    return sb.from('user_free_models_off').select('user_id').then(unwrap);
+  },
   features() {
     return sb.from('user_features').select('feature, daily_limit').then(unwrap);
   },

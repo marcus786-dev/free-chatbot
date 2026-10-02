@@ -502,9 +502,17 @@ Deno.serve(async (req) => {
     .eq("user_id", user.id);
   if (removedError) return errorResponse(503, "Couldn't check your models right now. Try again in a moment.");
   const removedFree = new Set((removedRows ?? []).map((r) => r.model as string));
+  // "Remove all models": every free model is off for this user.
+  const { data: freeOffRow, error: freeOffError } = await db
+    .from("user_free_models_off")
+    .select("user_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (freeOffError) return errorResponse(503, "Couldn't check your models right now. Try again in a moment.");
+  const freeOff = freeOffRow !== null;
 
   // Free models are open to everyone (except the ones removed above); anything else must be assigned by the admin.
-  if (model !== AUTO && model.endsWith(":free") && removedFree.has(model)) {
+  if (model !== AUTO && model.endsWith(":free") && (freeOff || removedFree.has(model))) {
     return errorResponse(403, "That model has been removed from your account.");
   }
   if (model !== AUTO && !model.endsWith(":free")) {
@@ -568,10 +576,10 @@ Deno.serve(async (req) => {
     if (assignedError) return errorResponse(503, "Couldn't check your models right now. Try again in a moment.");
     const assigned = [...new Set((assignedRows ?? []).map((r) => r.model as string))];
 
-    let pool = (info?.free ?? []).filter((id) => !removedFree.has(id));
-    if (!info && !assigned.length) return errorResponse(502, "Couldn't get the list of free models from OpenRouter.");
+    let pool = freeOff ? [] : (info?.free ?? []).filter((id) => !removedFree.has(id));
+    if (!info && !freeOff && !assigned.length) return errorResponse(502, "Couldn't get the list of free models from OpenRouter.");
     if (!pool.length && !assigned.length) {
-      return errorResponse(503, removedFree.size
+      return errorResponse(503, freeOff || removedFree.size
         ? "No free chat models are available for your account right now."
         : "OpenRouter lists no free chat models right now.");
     }
