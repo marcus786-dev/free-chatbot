@@ -4,8 +4,9 @@ import { describeCall, isToolId, runTool, type ToolContext, type ToolId, toolDef
 
 // Proxies chat requests to OpenRouter for signed-in users only.
 // The OpenRouter key lives in the OPENROUTER_API_KEY secret and never reaches the browser.
-// Every user can use the models whose id ends in ":free". The admin can also assign extra models
-// to a user (user_models), paid ones included; those come on top of the free ones.
+// Every user can use the models whose id ends in ":free", except ones the admin removed for that user
+// (user_blocked_models). The admin can also assign extra models to a user (user_models), paid ones
+// included; those come on top of the free ones.
 // model "auto" judges how hard the latest message is. Easy ones (short chit-chat, quick facts, simple
 // sums) go to a free model first; hard ones (code, long or multi-part questions, analysis) go to the
 // user's assigned models first. Either way it falls back to the other group when a model is busy or
@@ -494,7 +495,18 @@ Deno.serve(async (req) => {
   const web = body.web === true;
   const tz = validTimeZone(body.tz);
 
-  // Free models are open to everyone; anything else must be assigned to this user by the admin.
+  // Free models the admin took away from this user (user_blocked_models).
+  const { data: removedRows, error: removedError } = await db
+    .from("user_blocked_models")
+    .select("model")
+    .eq("user_id", user.id);
+  if (removedError) return errorResponse(503, "Couldn't check your models right now. Try again in a moment.");
+  const removedFree = new Set((removedRows ?? []).map((r) => r.model as string));
+
+  // Free models are open to everyone (except the ones removed above); anything else must be assigned by the admin.
+  if (model !== AUTO && model.endsWith(":free") && removedFree.has(model)) {
+    return errorResponse(403, "That model has been removed from your account.");
+  }
   if (model !== AUTO && !model.endsWith(":free")) {
     const { data: assignedRow, error: assignedError } = await db
       .from("user_models")
@@ -556,9 +568,13 @@ Deno.serve(async (req) => {
     if (assignedError) return errorResponse(503, "Couldn't check your models right now. Try again in a moment.");
     const assigned = [...new Set((assignedRows ?? []).map((r) => r.model as string))];
 
-    let pool = info?.free ?? [];
+    let pool = (info?.free ?? []).filter((id) => !removedFree.has(id));
     if (!info && !assigned.length) return errorResponse(502, "Couldn't get the list of free models from OpenRouter.");
-    if (!pool.length && !assigned.length) return errorResponse(503, "OpenRouter lists no free chat models right now.");
+    if (!pool.length && !assigned.length) {
+      return errorResponse(503, removedFree.size
+        ? "No free chat models are available for your account right now."
+        : "OpenRouter lists no free chat models right now.");
+    }
 
     // With tools on, Auto only picks models that can call tools. If there are none, answer without tools.
     let assignedPick = assigned;

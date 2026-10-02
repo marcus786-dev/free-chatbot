@@ -314,6 +314,7 @@
   </main>
 
   <datalist id="free-models"></datalist>
+  <datalist id="free-only-models"></datalist>
   <div id="toast" class="toast" role="status" hidden></div>
 </div>
 
@@ -504,7 +505,7 @@ function userRow(u) {
   );
 }
 
-// Extra models, paid ones too. Every user can always use all free models on top of these.
+// Free models can be removed per user; extra models (paid ones too) are added on top of the free ones.
 function modelsBox(u) {
   const chips = u.models.map((m) =>
     el('span', { class: 'chip' },
@@ -515,8 +516,22 @@ function modelsBox(u) {
   const input = el('input', { type: 'text', list: 'free-models', placeholder: 'any model id, paid too', 'aria-label': `Add a model for ${u.email}` });
   const add = el('button', { type: 'button', text: 'Add model', onclick: (e) => changeModel(e.currentTarget, 'add_model', u, input.value.trim()) });
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') add.click(); });
+  const removed = u.removedFreeModels ?? [];
+  const removedChips = removed.map((m) =>
+    el('span', { class: 'chip' },
+      el('span', { text: m }),
+      el('button', { type: 'button', class: 'chip-x', 'aria-label': `Give ${m} back`, title: 'Give back', text: '×',
+        onclick: (e) => changeModel(e.currentTarget, 'restore_free_model', u, m) }),
+    ));
+  const freeInput = el('input', { type: 'text', list: 'free-only-models', placeholder: 'free model id to remove', 'aria-label': `Remove a free model from ${u.email}` });
+  const take = el('button', { type: 'button', text: 'Remove free model', onclick: (e) => changeModel(e.currentTarget, 'remove_free_model', u, freeInput.value.trim()) });
+  freeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') take.click(); });
+  const base = removed.length ? 'Models: free models except' : 'Models: all free models';
   return el('div', { class: 'models' },
-    el('span', { class: 'small muted', text: u.models.length ? 'Models: all free models, plus' : 'Models: all free models' }),
+    el('span', { class: 'small muted', text: base }),
+    ...removedChips,
+    el('span', { class: 'add-model' }, freeInput, take),
+    el('span', { class: 'small muted', text: u.models.length ? 'Plus extra models:' : 'Extra models:' }),
     ...chips,
     el('span', { class: 'add-model' }, input, add),
   );
@@ -574,7 +589,13 @@ async function changeModel(btn, action, u, model) {
   btn.disabled = true;
   try {
     await api(action, { userId: u.id, model });
-    toast(action === 'add_model' ? `Added ${model} for ${u.email}.` : `Removed ${model} from ${u.email}.`, 'ok');
+    const done = {
+      add_model: `Added ${model} for ${u.email}.`,
+      remove_model: `Removed ${model} from ${u.email}.`,
+      remove_free_model: `Removed free model ${model} from ${u.email}.`,
+      restore_free_model: `Gave ${model} back to ${u.email}.`,
+    };
+    toast(done[action], 'ok');
     await loadDashboard();
   } catch (err) {
     toast(err.message, 'error');
@@ -592,6 +613,8 @@ async function loadModelSuggestions() {
       const label = m.id.endsWith(':free') || perM === 0 ? 'free' : `paid · $${+perM.toFixed(2)}/M in`;
       return el('option', { value: m.id, label });
     }));
+    $('free-only-models').replaceChildren(...models.filter((m) => m.id.endsWith(':free'))
+      .map((m) => el('option', { value: m.id })));
   } catch {
     // suggestions are optional
   }

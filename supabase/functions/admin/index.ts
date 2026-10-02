@@ -73,7 +73,7 @@ async function openRouterModelIds(): Promise<Set<string>> {
 
 async function dashboard(db: SupabaseClient) {
   const today = startOfTodayUtc();
-  const [users, stats, todayCount, blocked, settings, models, features, searches] = await Promise.all([
+  const [users, stats, todayCount, blocked, settings, models, features, searches, removedFree] = await Promise.all([
     listAllUsers(db),
     db.rpc("admin_user_stats"),
     db.from("chat_messages").select("id", { count: "exact", head: true }).eq("role", "user").gte("created_at", today),
@@ -82,8 +82,9 @@ async function dashboard(db: SupabaseClient) {
     db.from("user_models").select("user_id, model").order("model"),
     db.from("user_features").select("user_id, feature, daily_limit"),
     db.from("web_search_log").select("user_id").gte("created_at", today).limit(10000),
+    db.from("user_blocked_models").select("user_id, model").order("model"),
   ]);
-  for (const r of [stats, todayCount, blocked, settings, models, features, searches]) if (r.error) throw r.error;
+  for (const r of [stats, todayCount, blocked, settings, models, features, searches, removedFree]) if (r.error) throw r.error;
 
   const statsById = new Map(
     (stats.data as { user_id: string; messages: number; last_message_at: string | null }[]).map((s) => [s.user_id, s]),
@@ -92,6 +93,10 @@ async function dashboard(db: SupabaseClient) {
   const modelsById = new Map<string, string[]>();
   for (const m of (models.data ?? []) as { user_id: string; model: string }[]) {
     modelsById.set(m.user_id, [...(modelsById.get(m.user_id) ?? []), m.model]);
+  }
+  const removedFreeById = new Map<string, string[]>();
+  for (const m of (removedFree.data ?? []) as { user_id: string; model: string }[]) {
+    removedFreeById.set(m.user_id, [...(removedFreeById.get(m.user_id) ?? []), m.model]);
   }
   const webLimitById = new Map<string, number>();
   for (const f of (features.data ?? []) as { user_id: string; feature: string; daily_limit: number }[]) {
@@ -118,6 +123,7 @@ async function dashboard(db: SupabaseClient) {
         blocked: blockedIds.has(u.id),
         waiting: !isAdmin(u) && closedAt !== null && new Date(u.created_at) > new Date(closedAt),
         models: modelsById.get(u.id) ?? [],
+        removedFreeModels: removedFreeById.get(u.id) ?? [],
         webSearch: webLimitById.has(u.id)
           ? { enabled: true, dailyLimit: webLimitById.get(u.id)!, usedToday: webUsedById.get(u.id) ?? 0 }
           : { enabled: false, dailyLimit: DEFAULT_DAILY_LIMIT, usedToday: webUsedById.get(u.id) ?? 0 },
@@ -267,6 +273,9 @@ Deno.serve(async (req) => {
           return fail(400, "That doesn't look like a model id. Use the OpenRouter form, like anthropic/claude-sonnet-4.5 or google/gemma-4-31b-it:free.");
         }
         if (!(await openRouterModelIds()).has(model)) return fail(400, `OpenRouter doesn't offer ${model} right now.`);
+        // Adding a model explicitly also brings it back if it had been removed.
+        const { error: restoreError } = await db.from("user_blocked_models").delete().eq("user_id", userId).eq("model", model);
+        if (restoreError) throw restoreError;
         const { error } = await db.from("user_models").upsert({ user_id: userId, model });
         if (error) throw error;
         return json(200, { ok: true });
@@ -275,6 +284,30 @@ Deno.serve(async (req) => {
       case "remove_model": {
         if (!userId || !model) return fail(400, "userId and model are required.");
         const { error } = await db.from("user_models").delete().eq("user_id", userId).eq("model", model);
+        if (error) throw error;
+        return json(200, { ok: true });
+      }
+
+      // Take a free model away from one user (everyone else keeps it). Free models are open to all by
+      // default, so this is a per-user block list; restore_free_model undoes it.
+      case "remove_free_model": {
+        if (!userId) return fail(400, "userId is required.");
+        if (!MODEL_ID.test(model) || !model.endsWith(":free")) {
+          return fail(400, "Only free models (ids ending in :free) can be removed this way.");
+        }
+        const { data: target, error: targetError } = await db.auth.admin.getUserById(userId);
+        if (targetError || !target.user) return fail(400, "That user doesn't exist.");
+        // A model that was also assigned explicitly would otherwise stay usable through that row.
+        const { error: unassignError } = await db.from("user_models").delete().eq("user_id", userId).eq("model", model);
+        if (unassignError) throw unassignError;
+        const { error } = await db.from("user_blocked_models").upsert({ user_id: userId, model });
+        if (error) throw error;
+        return json(200, { ok: true });
+      }
+
+      case "restore_free_model": {
+        if (!userId || !model) return fail(400, "userId and model are required.");
+        const { error } = await db.from("user_blocked_models").delete().eq("user_id", userId).eq("model", model);
         if (error) throw error;
         return json(200, { ok: true });
       }
